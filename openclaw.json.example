@@ -1,0 +1,46 @@
+{
+  "gateway": {
+    "port": 18789,
+    "host": "0.0.0.0"
+  },
+  "models": {
+    "primary": {
+      "provider": "nvidia-nim",
+      "model": "YOUR_MODEL_HERE",
+      "api_key": "YOUR_NVIDIA_NIM_API_KEY_HERE"
+    },
+    "fallback1": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "api_key": "YOUR_ANTHROPIC_API_KEY_HERE"
+    },
+    "fallback2": {
+      "provider": "anthropic",
+      "model": "claude-opus-4-5",
+      "api_key": "YOUR_ANTHROPIC_API_KEY_HERE"
+    }
+  },
+  "telegram": {
+    "enabled": true,
+    "bot_token": "YOUR_TELEGRAM_BOT_TOKEN_HERE",
+    "allowed_users": [
+      "YOUR_TELEGRAM_USER_ID_HERE"
+    ]
+  },
+  "search": {
+    "brave_api_key": "YOUR_BRAVE_API_KEY_HERE",
+    "perplexity_api_key": "YOUR_PERPLEXITY_API_KEY_HERE"
+  },
+  "voice": {
+    "groq_api_key": "YOUR_GROQ_API_KEY_HERE",
+    "vapi_api_key": "YOUR_VAPI_API_KEY_HERE",
+    "elevenlabs_api_key": "YOUR_ELEVENLABS_API_KEY_HERE"
+  },
+  "video": {
+    "heygen_api_key": "YOUR_HEYGEN_API_KEY_HERE"
+  },
+  "integrations": {
+    "composio_api_key": "YOUR_COMPOSIO_API_KEY_HERE",
+    "fireflies_api_key": "YOUR_FIREFLIES_API_KEY_HERE"
+  }
+}

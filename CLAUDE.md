@@ -33,7 +33,7 @@ and real stakes. Every decision compounds or erodes capital. Act accordingly.
 Name: Ankur Kushwaha
 Handle: @alpharealm9
 Location: Choteau, Montana, US (MST timezone - UTC-7)
-Telegram: @GalaxyMapBot (Chat ID: 8583530506)
+Telegram: @GalaxyMapBot (Chat ID: [TELEGRAM_USER_ID])
 Email: kush.ankur0609@gmail.com
 
 Communication style:
@@ -75,14 +75,14 @@ Do not skip. Do not summarize from memory. Read the actual files.
 
 ### Infrastructure
 Platform:     AWS EC2 (Ubuntu 24.04.4 LTS)
-EC2 Public IP: 13.223.56.118
-EC2 Instance: i-0a45768402285c792
+EC2 Public IP: [EC2_PUBLIC_IP]
+EC2 Instance: [EC2_INSTANCE_ID]
 EC2 Internal: ip-172-31-83-71.ec2.internal
 Region:       us-east-1
 Framework:    OpenClaw v2026.2.12
 Gateway:      127.0.0.1:18789 (localhost only - security requirement)
 Bot Name:     Alpha
-Telegram Bot: @GalaxyMapBot (Chat ID: 8583530506)
+Telegram Bot: @GalaxyMapBot (Chat ID: [TELEGRAM_USER_ID])
 User alias:   restart-bot (in ~/.bashrc) - restarts OpenClaw in 3 seconds
 IAM Role:     EC2-SSM-Role (AmazonSSMManagedInstanceCore - attached Feb 22)
 
@@ -173,7 +173,7 @@ Skills derived: skills/finance/SKILL.md and skills/data/SKILL.md
 5. Browser Automator  - Puppeteer headless browser
 6. Claude in Chrome   - Live Chrome browser automation
 7. AWS SSM            - Direct EC2 filesystem access via Session Manager (WORKING Feb 23, 2026)
-                        Instance: i-0a45768402285c792, Region: us-east-1
+                        Instance: [EC2_INSTANCE_ID], Region: us-east-1
                         Script: C:\Users\ankur\mcp-ssm\index.js (v3 - spawnSync, no cmd.exe)
                         Config: C:\Users\ankur\AppData\Roaming\Claude\claude_desktop_config.json
 
@@ -262,7 +262,7 @@ Key fix v5: Telegram creds use hardcoded /home/ubuntu path (SSM runs as root, ~ 
 Key fix v5: Wallet uses set -a export so POLYCLAW_PRIVATE_KEY loads correctly in subprocess
 Oscar market IDs (for Gamma API): OBAA=613835 | Chalamet=614008 | Teyana=614355
 
-UptimeRobot: TCP Port 22 on 13.223.56.118 every 5min
+UptimeRobot: TCP Port 22 on [EC2_PUBLIC_IP] every 5min
 Dashboard: dashboard.uptimerobot.com/monitors/802403664
 
 ---
