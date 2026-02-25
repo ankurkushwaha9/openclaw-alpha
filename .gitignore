@@ -1,0 +1,36 @@
+# SENSITIVE - NEVER COMMIT
+openclaw.json
+.env
+*.env
+env.vars
+secrets/
+private/
+
+# OpenClaw runtime files
+.openclaw/
+gateway/
+*.token
+
+# Operational data - private
+paper_trading/ledger.json
+paper_trading/test_ledger.json
+paper_trading/pending_proposals.json
+scripts/whale_signals.json
+scripts/whale_signals.json.bak
+paper_trading/bridge.log
+paper_trading/paper_trades.log
+
+# Virtual environment
+skills/polyclaw/.venv/
+*.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# System files
+.DS_Store
+*.log
+*.tmp
+
+# Node modules
+node_modules/
