@@ -1,0 +1,18 @@
+name: Syntax Check
+on: [push, pull_request]
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.12
+      - name: Check Python syntax
+        run: |
+          python3 -m py_compile paper_trading/paper_engine.py
+          python3 -m py_compile paper_trading/paper_signal_bridge.py
+          python3 -m py_compile paper_trading/bridge_test.py
+          python3 -m py_compile scripts/whale_tracker.py
+          echo All files passed syntax check
