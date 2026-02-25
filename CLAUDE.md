@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-02-24 (v11 - Mission 7 LIVE: whale_tracker v4 + bridge v2 + cron 2h all confirmed running)
+# Last Updated: 2026-02-25 (v15.0 - Missions 5-8 complete + GitHub hygiene + BUGS.md + repo PUBLIC)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -573,7 +573,7 @@ Be precise. Be patient. Be Alpha.
 ---
 ## ARCHITECTURE CLARIFICATIONS (Added Feb 24, 2026)
 
-### The Two Systems — Must Never Be Confused
+### The Two Systems â Must Never Be Confused
 REAL MONEY:  Polygon wallet 0x6695...ccb3 | 3 Oscar positions | $25 at risk
              Manual trades only. Whale system NEVER auto-trades real money.
 PAPER MONEY: local ledger.json | $66 virtual (mirrors real wallet intentionally)
@@ -593,7 +593,7 @@ Paper trading gates before real money suggestions begin:
 When graduated: proposals show BOTH paper + real suggestion. Ankur decides. Never automatic.
 
 ### CLAUDE.md Role In The System
-CLAUDE.md is the BACKBONE — engineering bible and rebuild guide.
+CLAUDE.md is the BACKBONE â engineering bible and rebuild guide.
 If Alpha (OpenClaw) blows up or memory corrupts:
 1. New Claude reads CLAUDE.md
 2. Rebuilds full context of everything built
@@ -609,7 +609,7 @@ Day: email+calendar, VAPI reservations, Instagram, reel creation
 Evening: market analysis, route weather, deal search, content creation
 Random: website building, medical research, legal research
 Architecture needed: Two-Brain (SOUL+USER static, MEMORY+TOOLS dynamic)
-Router rule: live questions → force tool execution, never guess from memory
+Router rule: live questions â force tool execution, never guess from memory
 Composio audit needed: 250+ apps potentially already wired
 
 ### Polymarket API Architecture (Learned Feb 24)
@@ -617,159 +617,10 @@ Gamma API: market discovery + metadata only. NOT reliable for live prices.
 CLOB API: live prices via token_id. Use for P&L tracking.
 Numeric IDs (e.g. 613835): GET /markets/{id} path parameter
 ConditionId hex (0x...): scan all active/closed markets, match by conditionId field
-Never use Gamma outcomePrices for conditionId markets — returns 0 or wrong market.
+Never use Gamma outcomePrices for conditionId markets â returns 0 or wrong market.
 
 CLAUDE.md v14.0 | Updated: 2026-02-24 | Mission 8 COMPLETE + ALPHA_MEMORY v3 synced + architecture clarified
 
----
-## ARCHITECTURE CLARIFICATIONS (Added Feb 24, 2026)
-
-### The Two Systems - Must Never Be Confused
-REAL MONEY:  Polygon wallet 0x6695...ccb3 | 3 Oscar positions | $25 at risk
-             Manual trades only. Whale system NEVER auto-trades real money.
-PAPER MONEY: local ledger.json | $66 virtual (mirrors real wallet intentionally)
-             Whale system proposes paper trades only until graduation.
-
-### Why $66 Virtual Balance (Not $1,000)
-Decision: mirror real wallet exactly so training data reflects real risk ratios.
-$10 bet on $1,000 = 1% risk. $10 bet on $66 = 15% risk. Completely different signals.
-If virtual balance does not match real, scorecard is useless for calibration.
-
-### Graduation System
-Paper trading gates before real money suggestions begin:
-- 10+ resolved trades
-- 60%+ win rate
-- 10%+ average ROI
-- 50%+ YES approval rate
-When graduated: proposals show BOTH paper + real suggestion. Ankur decides. Never automatic.
-
-### CLAUDE.md Role In The System
-CLAUDE.md is the BACKBONE - engineering bible and rebuild guide.
-If Alpha (OpenClaw) blows up or memory corrupts:
-1. New Claude reads CLAUDE.md
-2. Rebuilds full context of everything built
-3. Can reconstruct any script, any decision, any architecture
-ALPHA_MEMORY.md is what Alpha reads during conversations (operational).
-CLAUDE.md is what Claude reads to rebuild from scratch (structural).
-Never delete CLAUDE.md. Never let it go stale.
-
-### Ankur's Full Vision (Recorded For Future Claude Sessions)
-Alpha = personal AI OS via Telegram. 14 daily use cases mapped:
-Morning: news, weather, job search
-Day: email+calendar, VAPI reservations, Instagram, reel creation
-Evening: market analysis, route weather, deal search, content creation
-Random: website building, medical research, legal research
-Architecture: Two-Brain (SOUL+USER static, MEMORY+TOOLS dynamic)
-Router rule: live questions = force tool execution, never guess from memory
-Composio audit needed: 250+ apps potentially already wired
-
-### Polymarket API Architecture (Learned Feb 24)
-Gamma API: market discovery + metadata only. NOT reliable for live prices.
-CLOB API: live prices via token_id. Use for P&L tracking.
-Numeric IDs (e.g. 613835): GET /markets/{id} path parameter
-ConditionId hex (0x...): scan all active/closed markets, match by conditionId field
-Never use Gamma outcomePrices for conditionId markets - returns 0 or wrong market.
-
-
-
----
-## SESSION LOG — Feb 24, 2026 (Full Day Summary)
-
-### MISSION 8 COMPLETE — End-to-End Pipeline Test
-- Built bridge_test.py: synthetic signal injection tool
-- Patched paper_engine.py: BOT_ENV=e2e_test routes to test_ledger.json
-- Patched paper_signal_bridge.py: BRIDGE_TEST_MODE=1 prefixes [TEST DO NOT FUND]
-- Full chain proven: synthetic signal -> bridge -> Telegram -> paper_engine -> ledger
-- Production ledger.json untouched throughout entire test
-- test_ledger.json created, used, deleted cleanly
-- bridge_test.py saved at paper_trading/bridge_test.py (reusable regression tool)
-
-### PERMANENT ACL FIX (Gemini recommendation, implemented)
-Problem: SSM runs as root. Files created by SSM owned by root:root.
-Ubuntu user got PermissionError on every new file.
-Solution: Linux Access Control Lists
-Commands applied:
-  sudo apt install -y acl
-  sudo setfacl -R -m u:ubuntu:rwX /home/ubuntu/.openclaw/workspace/
-  sudo setfacl -R -d -m u:ubuntu:rwx /home/ubuntu/.openclaw/workspace/
-Result: Every future file created by root/SSM automatically inherits
-ubuntu read/write access. No more sudo chmod ever again. Permanent.
-
-### FIRST REAL ORGANIC WHALE SIGNAL FIRED
-Market: Rojas guilty in Texas illegal abortion case?
-Tier 1 signal | 90.7% whale divergence | entry 6.2 cents
-Bridge sent real Telegram proposal (not a test)
-Paper trade executed: $10 virtual | position ID f1e230a4
-Current status: losing (-56%) as market moved against signal
-Lesson: whale signals can be wrong. Paper trading exists for exactly this reason.
-
-### POLYMARKET API ARCHITECTURE FIX
-Problem: paper_engine.py used Gamma API for all price lookups.
-Gamma API works for numeric IDs but fails for conditionId hex markets.
-Root cause discovered via brainstorming (Gemini + ChatGPT + Claude):
-- Gamma API = metadata layer only. NOT reliable for live prices.
-- CLOB API = real trading engine. Use for live P&L.
-- ConditionId markets have no orderbook on CLOB (low liquidity markets)
-- Correct fix: scan all active+closed markets, match by conditionId field exactly
-
-Fix implemented in paper_engine.py get_market_price():
-- Numeric ID (e.g. 613835): GET /markets/{id} path parameter (unchanged)
-- ConditionId hex (0x...): scan active then closed, match conditionId exactly
-- Rojas market now showing live price 0.027 correctly
-
-### ALPHA BRAIN SYNC - Three-Way Alignment Achieved
-Problem: Alpha was hallucinating stale data from old ALPHA_MEMORY.md
-- Wrong: $1,000 virtual balance (should be $66)
-- Wrong: PolySimulator platform (should be local ledger.json)
-- Wrong: 0 trades executed (should be 2 open positions)
-- Wrong: 55% win rate gate (should be 60%)
-
-ALPHA_MEMORY.md rewritten to v3.0 with complete accurate state.
-Verified: Alpha responded correctly to test question with all 4 gates,
-both positions with correct P&L, and correct $66 balance explanation.
-
-All three aligned: Ankur + Claude + Alpha on same page as of Feb 24, 2026.
-
-### ARCHITECTURAL BRAINSTORMING SESSION
-Consulted Gemini + ChatGPT on 3 core questions:
-Q1: Single source of truth for Alpha memory
-Q2: Static files vs live execution for answering questions  
-Q3: What Mission 9 actually looks like
-
-All three AIs agreed:
-1. Two-Brain Architecture: Static (SOUL+USER) + Dynamic (MEMORY+TOOLS)
-2. Live execution for live data - never guess financial numbers from files
-3. Router Decision Matrix: classify query type, force tool execution for live data
-4. Memory Controller: Alpha updates MEMORY only, humans control SOUL+USER
-5. Consolidate 6 memory files into 4 with strict ownership rules
-
-### ANKUR'S VISION — 14 DAILY USE CASES MAPPED
-Morning: top 10 news, Montana weather, AI job search
-Day: email+calendar scheduling, VAPI restaurant reservation,
-     Instagram DM check, reel creation from link
-Evening: market analysis + trades, Great Falls to Helena weather route,
-         iPhone deal search, AI Instagram content creation
-Random: production website build, medical bill research, LLC legal advice
-
-### TOOL ARCHITECTURE FOR MISSION 9
-Tier 1 (quick wins - tools already wired):
-- search_and_summarize() -> Brave + Perplexity (news, jobs, deals, research)
-- get_portfolio_status() -> paper_engine.py status (live ledger data)
-- get_weather(location) -> OpenWeatherMap API (free, needs adding)
-- make_phone_call(purpose) -> VAPI outbound (LIVE TODAY - phone +19098376220)
-- analyze_trades() -> Gamma API + ledger.json
-
-Tier 2 (medium effort - one new API each):
-- Email + calendar -> Gmail API + Google Calendar OAuth
-- Route weather -> Google Maps + Weather API
-
-Tier 3 (complex pipelines):
-- Instagram DM reading -> Instagram Graph API (Facebook app approval needed)
-- Reel creation -> HeyGen + Perplexity + Gemini pipeline
-- Production website -> full deployment pipeline
-
-Composio audit needed first: 250+ apps may already be wired.
-Many Tier 2/3 tools potentially available today through Composio.
 
 ### TWO SYSTEMS CLARIFICATION (Critical - never confuse these)
 REAL MONEY: Polygon wallet | 3 Oscar positions | $25 at risk | manual only
@@ -836,10 +687,10 @@ Fix 3: Alert message clarified to say post-trade exposure
 File changed: paper_trading/paper_signal_bridge.py
 Lesson: Never rely on single reset-able source for deduplication
 
-### GITHUB - openclaw-alpha (PRIVATE)
+### GITHUB - openclaw-alpha (PUBLIC)
 URL: https://github.com/ankurkushwaha9/openclaw-alpha
 3 commits pushed as of Feb 25
-Pending: requirements.txt, openclaw.json.example, scrub EC2 IP, dev branch
+DONE: requirements.txt, openclaw.json.example, EC2 IP scrubbed, repo PUBLIC, CI upgraded, pytest added
 
 ### PAPER PORTFOLIO Feb 25
 Balance: 48.00 | Positions: 2
