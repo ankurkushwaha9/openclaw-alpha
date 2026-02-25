@@ -11,12 +11,12 @@
     },
     "fallback1": {
       "provider": "anthropic",
-      "model": "claude-sonnet-4-5",
+      "model": "claude-sonnet-4-6",
       "api_key": "YOUR_ANTHROPIC_API_KEY_HERE"
     },
     "fallback2": {
       "provider": "anthropic",
-      "model": "claude-opus-4-5",
+      "model": "claude-opus-4-6",
       "api_key": "YOUR_ANTHROPIC_API_KEY_HERE"
     }
   },
