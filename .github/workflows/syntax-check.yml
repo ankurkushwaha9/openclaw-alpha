@@ -1,18 +1,25 @@
 name: Syntax Check
+
 on: [push, pull_request]
+
 jobs:
   syntax:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.12
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
       - name: Check Python syntax
         run: |
           python3 -m py_compile paper_trading/paper_engine.py
           python3 -m py_compile paper_trading/paper_signal_bridge.py
           python3 -m py_compile paper_trading/bridge_test.py
           python3 -m py_compile scripts/whale_tracker.py
-          echo All files passed syntax check
+          echo "All files passed syntax check"
