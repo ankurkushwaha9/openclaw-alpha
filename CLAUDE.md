@@ -816,3 +816,37 @@ Never delete. Never let go stale. Update at end of every session.
 ALPHA_MEMORY.md = what Alpha reads during conversations (operational layer)
 CLAUDE.md = what Claude reads to understand and rebuild (structural layer)
 
+
+
+---
+## SESSION LOG - Feb 25, 2026
+
+### BUGS.md CREATED - Issue Tracker Live
+New file: BUGS.md pushed to GitHub
+BUG-001: Duplicate guard spam (FIXED)
+BUG-002: Alpha hallucinating Rojas trade (FIXED)
+BUG-003: Exposure guard false alarm (NOT A BUG)
+
+### BUG-001 FIX - Duplicate Guard Spam
+Symptom: Cornyn market spammed every 2 hours all night
+Root cause: Blocked proposals never recorded in pending_proposals.json
+Fix 1: Manually injected Cornyn to stop immediate spam
+Fix 2: Bridge now records all blocked proposals
+Fix 3: Alert message clarified to say post-trade exposure
+File changed: paper_trading/paper_signal_bridge.py
+Lesson: Never rely on single reset-able source for deduplication
+
+### GITHUB - openclaw-alpha (PRIVATE)
+URL: https://github.com/ankurkushwaha9/openclaw-alpha
+3 commits pushed as of Feb 25
+Pending: requirements.txt, openclaw.json.example, scrub EC2 IP, dev branch
+
+### PAPER PORTFOLIO Feb 25
+Balance: 48.00 | Positions: 2
+OBAA: +-bash.16 (+2%) | Rojas: -.53 (-15%) recovering from -56%
+Scorecard: 0/10 resolved
+
+### MISSION 9 NOT STARTED
+Priority 1: GitHub hygiene
+Priority 2: Composio audit
+Priority 3: Register 5 live tools
