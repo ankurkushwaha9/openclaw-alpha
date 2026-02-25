@@ -445,9 +445,22 @@ def run_bridge(dry_run=False):
                 f"Signal BLOCKED by exposure guard\n"
                 f"- Market: {market_name[:50]}\n"
                 f"- Reason: {reason}\n"
-                f"- Portfolio at {(total_invested/total_portfolio*100):.1f}% deployed",
+                f"- Post-trade exposure would be: {exposure_after*100:.1f}%\n"
+                f"- Portfolio currently at {(total_invested/total_portfolio*100):.1f}% deployed",
                 dry_run
             )
+            # Record blocked proposal so duplicate guard suppresses future spam
+            blocked_record = {
+                "market_id":    market_id,
+                "market_name":  market_name,
+                "status":       "blocked",
+                "block_reason": "exposure_guard",
+                "sent_at":      datetime.now(timezone.utc).isoformat(),
+            }
+            pending["proposals"].append(blocked_record)
+            if not dry_run:
+                save_pending(pending)
+                log(f"Blocked proposal recorded — future spam suppressed")
             continue
 
         # --- Guard 3: Duplicate ---
