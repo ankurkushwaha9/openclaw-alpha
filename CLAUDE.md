@@ -701,3 +701,28 @@ Scorecard: 0/10 resolved
 Priority 1: GitHub hygiene
 Priority 2: Composio audit
 Priority 3: Register 5 live tools
+
+
+---
+## EXTERNAL AUDIT + FIXES - Feb 25, 2026
+
+FIX 1 - openclaw.json.example wrong model names (CRITICAL)
+Problem: claude-sonnet-4-5 and claude-opus-4-5 do not exist
+Fix: Updated to claude-sonnet-4-6 and claude-opus-4-6
+
+FIX 2 - GitHub Actions outdated + missing pip install (HIGH)
+Fix: Upgraded to checkout@v4 + setup-python@v5 + added pip install step
+
+FIX 3 - requirements.txt missing pytest (MEDIUM)
+Fix: Added pytest>=8.0.0 to requirements.txt
+
+FIX 4 - CLAUDE.md version drift + duplicate section + stale status (MEDIUM)
+Fix: Version v15.0, duplicate removed, status updated to PUBLIC
+
+TOKEN SECURITY NOTE
+Token [REVOKED_TOKEN] was shared in chat
+Action: Revoke at github.com/settings/tokens immediately
+
+LESSON
+External reviews catch things missed during active development
+Schedule audits after every 3-4 missions
