@@ -726,3 +726,61 @@ Action: Revoke at github.com/settings/tokens immediately
 LESSON
 External reviews catch things missed during active development
 Schedule audits after every 3-4 missions
+
+---
+## SESSION LOG - Feb 26, 2026
+
+### BUG-001 FINAL FIX - Guard Order Root Cause
+After 5 fix attempts over 2 days, root cause finally found and fixed.
+Real problem: Guard 2 (Exposure) ran before Guard 3 (Duplicate)
+Exposure guard fired -> sent Telegram -> continue -> Duplicate guard NEVER ran
+Fix: Swapped guard order. Duplicate now runs before Exposure.
+New order: Tier -> Duplicate -> Exposure -> Category cap
+Commit: 1e5f971
+Lesson: Read full execution flow before patching. Root cause took 5 min to find
+        once code was read properly. All previous fixes were correct but in wrong place.
+
+### EC2 MAINTENANCE - Feb 26
+- Kernel updated: 6.14.0 -> 6.17.0-1007-aws
+- 7 system packages upgraded
+- EC2 rebooted cleanly
+- All services came back online automatically
+- Memory usage dropped from 22% to 12% after reboot
+
+### SSH ACCESS FIXED - Feb 26
+User can now connect via Windows Command Prompt:
+aws ssm start-session --target i-0a45768402285c792 --region us-east-1
+Then: bash -> sudo su - ubuntu
+No more browser terminal paste issues (^[[200~ problem eliminated)
+SSM tools also working for Claude direct EC2 access
+
+### GITHUB STATUS - Feb 26
+All hygiene items complete:
+- requirements.txt + openclaw.json.example + EC2 IP scrubbed
+- GitHub Actions CI: checkout@v4 + setup-python@v5 + pytest
+- v1.0 tag + dev branch + master branch
+- Repo PUBLIC: https://github.com/ankurkushwaha9/openclaw-alpha
+- Latest commit: 1e5f971 (BUG-001 final fix)
+- Token in use: ghp_cN0oG8... (repo + workflow scope)
+
+### PAPER PORTFOLIO - Feb 26
+Balance: $48.00 | Starting: $66.00
+OBAA Best Picture: $8 | entry 74c | current 75.5c | P&L +$0.16 (+2%)
+Rojas Texas Case: $10 | entry 6.2c | current 1.8c | P&L -$7.10 (-71%)
+NOTE: Rojas resolves Feb 28 as NO (criminal case hearing not until June 3)
+      Full $10 loss expected on Feb 28
+Portfolio P&L: -$6.93 (-38.5%)
+Scorecard: 0/10 resolved | Still in training
+
+### ROJAS TRADE LESSON
+Bot entered YES on Rojas guilty by Feb 28
+Criminal case next hearing: June 3, 2026 - impossible to resolve by Feb 28
+Missing guard: resolution timeline vs case timeline check needed
+Future improvement: if legal case resolution date > market resolution date -> BLOCK
+Logged as future improvement for Mission 9+
+
+### MISSION 9 - NOT YET STARTED
+Priorities:
+1. Composio audit (250+ apps may already be wired)
+2. Register first 5 live tools for Alpha
+3. Resolution timeline guard for legal markets

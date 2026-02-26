@@ -122,3 +122,19 @@ v4 gap: Cleanup section had datetime timezone mismatch error
         offset-naive vs offset-aware datetime comparison crashed bridge
 v5 (final): Added .replace(tzinfo=timezone.utc) for naive datetimes in cleanup
 Status: FIXED v5 - awaiting next scan confirmation
+
+v5 gap: REAL ROOT CAUSE FOUND - Guard order was wrong the entire time
+        Guard 2 (Exposure) fired -> sent Telegram -> continue
+        Guard 3 (Duplicate) NEVER RAN because continue skipped it
+        All previous fixes were patching symptoms not root cause
+
+v6 FINAL FIX: Swapped guard order
+        Guard 1: Tier check
+        Guard 2: Duplicate (runs FIRST - silent block, no Telegram)
+        Guard 3: Exposure (only reached for fresh markets)
+        Guard 4: Category cap
+Status: FIXED v6 - DEFINITIVE - pushed to GitHub commit 1e5f971
+Date: Feb 26, 2026
+Lesson: When bug survives multiple fixes, read the full execution flow
+        Fixing symptoms without reading the code wastes days
+        Root cause was 1 line - guard order. Found in 5 min by reading properly.
