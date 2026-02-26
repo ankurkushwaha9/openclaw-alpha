@@ -979,3 +979,159 @@ Log: /tmp/health_check.log
 
 LESSON: Schedule health checks from day 1 on any automated system
         Silent failures go undetected for hours without monitoring
+
+---
+## MISSION 9 PRE-DIVE - ARCHITECTURE DIAGRAM ANALYSIS (Feb 26, 2026 Night)
+
+### DIAGRAM vs REALITY GAP ANALYSIS
+Ankur shared the full production architecture diagram. Cross-referenced against actual EC2 state.
+This is the definitive gap map before Mission 9 starts.
+
+### WHAT IS ACTUALLY WIRED AND RUNNING
+
+Component             | Status        | Notes
+----------------------|---------------|------------------------------------------
+Gemma 2B (Ollama)     | WIRED         | openclaw.json provider, local http://127.0.0.1:11434
+Kimi K2.5 (NIM API)   | WIRED         | openclaw.json nvidia-nim provider
+Claude Sonnet         | WIRED         | openclaw.json anthropic provider
+Telegram Channel      | WIRED + LIVE  | Bot token in openclaw.json, allowlist active
+Web Search            | WIRED         | API key in openclaw.json tools.web.search (need to ID provider)
+Groq (Audio only)     | PARTIAL       | Whisper-large-v3-turbo for audio. Text inference NOT wired.
+n8n                   | RUNNING       | Docker container up 21hrs. ZERO workflows built.
+PolyClaw Skill        | LIVE          | Trading engine active
+Whale Tracker         | LIVE          | Scans every 2hrs
+Paper Bridge          | LIVE          | BUG-001 fixed
+Health Check          | LIVE          | New tonight, runs at :30 past every 2hrs
+EBS 20GB              | ACTIVE        | EC2 storage confirmed
+Composio              | API KEY READY | In .env, skill.md written, nothing registered yet
+
+### WHAT IS IN THE DIAGRAM BUT NOT YET BUILT
+
+Component             | Gap Type      | Mission 9 Relevance
+----------------------|---------------|------------------------------------------
+Groq Text Inference   | UNWIRED       | FREE fast inference - Llama 3.3 70B free tier
+                      |               | Can replace Kimi for cheap scan tasks
+                      |               | Need GROQ_API_KEY in .env
+Perplexity            | UNWIRED       | AI-powered web search with citations
+                      |               | Better than raw Brave for signal confirmation
+                      |               | Need PERPLEXITY_API_KEY in .env
+Brave Search          | PARTIALLY     | API key in openclaw.json but not called by any script
+                      |               | The BSAOFWrARjRMhb9fjza4vm684wWkEKb key IS Brave Search
+                      |               | This is our free web search - just needs a caller script
+HeyGen                | DORMANT       | Video generation for Instagram reels
+                      |               | Listed in diagram, ZERO integration built
+                      |               | Critical for alpharealm9 content pipeline
+Fireflies AI          | DESKTOP ONLY  | MCP on desktop Claude only, not on EC2
+                      |               | Meeting transcription - low priority for trading
+Vapi                  | DESKTOP ONLY  | Voice calls MCP on desktop only
+n8n Workflows         | ZERO BUILT    | Docker running, nothing automated
+                      |               | Should orchestrate: news -> analysis -> post pipeline
+Integrations Bridge   | NOT CONNECTED | Diagram shows Groq+Perplexity+Brave as secure API layer
+                      |               | None of these feed into whale signals yet
+tools/ directory      | MISSING       | Mission 9 Phase 1 creates this
+Smart Router          | SKILL ONLY    | SKILL.md exists but is it live-routing in production?
+                      |               | Needs verification - may be OpenClaw built-in
+
+### THE BIG REVELATION FROM THE DIAGRAM
+
+The diagram shows BRAVE SEARCH already has an API key in openclaw.json.
+tools.web.search.apiKey = BSAOFWrARjRMhb9fjza4vm684wWkEKb
+
+This means:
+- We do NOT need Composio for web search
+- We already HAVE web search capability
+- We just need a script that calls Brave Search API and returns results
+- This is Mission 9 Tool 1 - already 80% done
+
+GROQ is the other hidden gem:
+- Free tier: Llama 3.3 70B, Mixtral 8x7B
+- 6000 tokens/min free
+- Faster than Claude for quick classification tasks
+- In diagram as Integrations Bridge but not yet wired for text
+
+### REVISED MISSION 9 TOOL PRIORITY (After Diagram Analysis)
+
+Tool 1 - Brave Search (FASTEST - key already exists)
+  Script: tools/brave_search.py calls openclaw.json key directly
+  Use: News confirmation for whale signals
+  Time to build: 30 minutes
+
+Tool 2 - Groq Text (FREE fast inference)
+  Wire Groq API for signal analysis/classification
+  Use: Cheap fast triage of 500 markets before Kimi/Claude escalation
+  Saves: API cost on Kimi K2.5
+
+Tool 3 - Gmail Read (via Composio)
+  Check Polymarket resolution emails
+  Composio connected account needed
+
+Tool 4 - Gmail Send (via Composio)
+  Weekly reports to Ankur
+  Approval gate required
+
+Tool 5 - HeyGen (for alpharealm9 reels)
+  Video generation pipeline
+  Pairs with n8n workflow for automation
+
+### MISSION 9 REVISED EXECUTION ORDER
+
+OLD ORDER (before diagram analysis):
+  Phase 1: Build tools/ directory + registry + executor
+  Phase 2: Composio web search
+  Phase 3: Resolution timeline guard
+
+NEW ORDER (after diagram analysis):
+  Phase 1: Build tools/ directory + registry + executor (same)
+  Phase 2: Brave Search via existing API key (FASTER than Composio, key already exists)
+  Phase 3: Resolution timeline guard (Guard 5)
+  Phase 4: Groq text inference for cheap triage
+  Phase 5: Composio Gmail (read then send)
+  Phase 6: HeyGen + n8n for Instagram pipeline
+
+### KEY QUESTIONS TO ASK ANKUR IN MORNING
+
+Q1: The Brave Search API key - is it active and paid, or trial?
+Q2: Do you have Groq API key? (free at console.groq.com)
+Q3: Do you have Perplexity API key? Or just Brave for web search?
+Q4: HeyGen - do you have an account and API key?
+Q5: n8n first workflow - should it be trading alerts or Instagram content?
+Q6: Smart Router - is it actually doing live model routing or is SKILL.md just documentation?
+
+### OVERNIGHT SYSTEM STATUS (Feb 26, 2026 11 PM MST approx)
+
+Cron Schedule Tonight:
+  Every :00 hrs - Whale scan + Bridge (Cornyn should be SILENT - BUG-001 fix)
+  Every :30 hrs - Health check Telegram report to Ankur
+  4am UTC (9pm MST) - Daily monitor already ran
+
+Paper Ledger:
+  Balance: $48.00 / $66.00 starting
+  OBAA Best Picture: $8 | YES | paper
+  Rojas Texas: $10 | YES | paper (expect full loss Feb 28)
+  Pending proposals: check health check report
+
+GitHub: 263f10d (latest - health_check.py + docs)
+EC2: All 3 crons active, kernel 6.17.0, memory 12%
+
+### MORNING SESSION PLAN (Feb 27, 2026)
+
+Step 1: Review overnight health check Telegram reports
+Step 2: Confirm BUG-001 dead (no Cornyn spam overnight)
+Step 3: Answer 6 questions above
+Step 4: Start Mission 9 Phase 1 (tools/ directory)
+Step 5: Phase 2 - Brave Search (30 min build, key exists)
+Step 6: Test whale signal now includes news confirmation in Telegram
+
+### ARCHITECTURE INTEGRITY SCORE (Honest Assessment)
+
+Foundation:         9/10 (rock solid - EC2, cron, Telegram, trading)
+Intelligence Layer: 7/10 (whale tracker good, needs news confirmation)
+Action Layer:       2/10 (tools not registered - this is Mission 9)
+Content Pipeline:   1/10 (n8n running, zero workflows, HeyGen untouched)
+Model Efficiency:   6/10 (Groq text inference free tier untapped)
+Web Search:         4/10 (key exists, no caller script)
+
+Overall: 5/10 - Strong foundation, thin action layer
+Mission 9 goal: Push action layer from 2/10 to 7/10
+
+Good night. See you in the morning Ankur.
