@@ -950,3 +950,32 @@ Q2: Approval gate: every tool call or only write operations?
 Q3: Tool limit per signal: how many tools can Alpha chain automatically? 1? 3?
 
 ### STATUS: BRAINSTORM COMPLETE - AWAITING ANKUR APPROVAL TO START PHASE 1
+
+---
+## SESSION UPDATE - Feb 26, 2026 (Evening)
+
+### BUG-001 v6 - Final Datetime + Cron Fix
+Problem 1: EC2 reboot wiped ubuntu crontab - whale+bridge cron was gone
+Problem 2: Bracket placement wrong in cleanup section
+           .total_seconds() called on datetime object not timedelta
+Fix: Corrected brackets + restored cron
+Commit: 4d46fee
+Cron now confirmed:
+  0 16 * * *    daily_monitor.py (9am MST)
+  0 */2 * * *   whale_tracker.py --json + paper_signal_bridge.py (every 2hrs)
+
+### HEALTH CHECK SYSTEM (New - Feb 26, 2026)
+Script: scripts/health_check.py
+Cron: 30 */2 * * * (30 min after every whale scan - offset intentional)
+Purpose: Monitor bot health every 2hrs, send Telegram report
+Checks:
+  1. Last bridge scan timestamp (is bot running on schedule?)
+  2. Any errors in bridge.log (crashes, exceptions)
+  3. Paper portfolio status (balance, positions, P&L)
+  4. Pending proposals count (spam indicator)
+  5. Cron jobs active (both crons present?)
+Telegram format: bullets + emojis, no markdown tables
+Log: /tmp/health_check.log
+
+LESSON: Schedule health checks from day 1 on any automated system
+        Silent failures go undetected for hours without monitoring

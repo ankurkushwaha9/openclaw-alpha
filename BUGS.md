@@ -138,3 +138,20 @@ Date: Feb 26, 2026
 Lesson: When bug survives multiple fixes, read the full execution flow
         Fixing symptoms without reading the code wastes days
         Root cause was 1 line - guard order. Found in 5 min by reading properly.
+
+v5 gap: Bracket placement wrong in cleanup section
+        .total_seconds() called on datetime object instead of timedelta
+        AttributeError: 'datetime.datetime' object has no attribute 'total_seconds'
+v6 FINAL: Fixed bracket placement - now correctly calculates timedelta first then .total_seconds()
+        Also: cron for whale+bridge was wiped during EC2 reboot - restored
+Status: FIXED v6 - cron restored - datetime clean - pushed commit 4d46fee
+Date: Feb 26, 2026
+
+FULL BUG-001 LESSONS SUMMARY:
+1. Always read full execution flow before patching symptoms
+2. Guard order matters - duplicate must run before exposure
+3. Blocked proposals need long TTL (48hrs) not short (30min)
+4. Datetime timezone consistency - always use timezone-aware datetimes
+5. Bracket placement in complex expressions - test carefully
+6. EC2 reboots wipe crontab - always verify cron after any reboot
+7. Health checks needed - silent failures go undetected for hours
