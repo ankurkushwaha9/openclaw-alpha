@@ -18,25 +18,21 @@ LEDGER       = BASE / 'paper_trading/ledger.json'
 PENDING      = BASE / 'paper_trading/pending_proposals.json'
 ENV_FILE     = BASE / '.env'
 
-# Load Telegram creds from .env
-def load_env():
-    creds = {}
+# Load Telegram creds from openclaw.json (that's where they actually live)
+def load_telegram_creds():
+    import json
     try:
-        with open(ENV_FILE) as f:
-            for line in f:
-                line = line.strip()
-                if '=' in line and not line.startswith('#'):
-                    k, v = line.split('=', 1)
-                    creds[k.strip()] = v.strip().strip('"').strip("'")
-    except:
-        pass
-    return creds
+        cfg = json.loads(open('/home/ubuntu/.openclaw/openclaw.json').read())
+        token   = cfg['channels']['telegram']['botToken']
+        chat_id = str(cfg['channels']['telegram']['allowFrom'][0])
+        return token, chat_id
+    except Exception as e:
+        print(f"Cannot load Telegram creds from openclaw.json: {e}")
+        return '', ''
 
 def send_telegram(msg):
-    import urllib.request
-    creds = load_env()
-    token = creds.get('TELEGRAM_BOT_TOKEN', '')
-    chat_id = creds.get('TELEGRAM_CHAT_ID', '')
+    import urllib.request, json
+    token, chat_id = load_telegram_creds()
     if not token or not chat_id:
         print("No Telegram creds found")
         return

@@ -155,3 +155,45 @@ FULL BUG-001 LESSONS SUMMARY:
 5. Bracket placement in complex expressions - test carefully
 6. EC2 reboots wipe crontab - always verify cron after any reboot
 7. Health checks needed - silent failures go undetected for hours
+
+---
+## BUG-002 - Exposure Guard Spam + Cleanup TTL Wipes Blocked Records
+Date: Feb 27, 2026
+Status: FIXED (single pass, 4 bugs)
+
+### ROOT CAUSE
+Cleanup TTL at bottom of bridge used flat PROPOSAL_TTL_MINS * 2 (60 min) for ALL proposals
+regardless of status. Blocked records should survive 48hrs (2880 min) but were wiped after 60 min.
+Next scan 120 min later = blocked record gone = duplicate guard passes = exposure guard fires again
+= Telegram spam every 2 hours. Exactly what Ankur saw in screenshot.
+
+### ALL 4 BUGS IN THIS BATCH
+
+Bug 1 - Cleanup TTL wipes blocked records after 60 min (ROOT CAUSE of spam)
+  Location: paper_signal_bridge.py line ~537 cleanup section
+  Problem:  PROPOSAL_TTL_MINS * 2 = 60 min applied to ALL proposals
+  Fix:      Respect status - blocked = 2880 min TTL, sent = 60 min TTL
+
+Bug 2 - Exposure guard sends Telegram on every repeat block
+  Location: paper_signal_bridge.py line ~453 exposure guard block handler
+  Problem:  Telegram fires even when market already has a blocked record
+  Fix:      Check if market already blocked before sending Telegram alert
+
+Bug 3 - Trim boundary hits exactly 40.0% which fails strict < check
+  Location: paper_signal_bridge.py guard_exposure function
+  Problem:  Trim sets amount = headroom so new_exposure = exactly 40.0%
+            guard_exposure uses < (strict) so 40.0% fails even at cap
+  Fix:      Change < to <= in guard_exposure
+
+Bug 4 - Health check cannot find Telegram creds
+  Location: scripts/health_check.py load_env() function
+  Problem:  Reads TELEGRAM_BOT_TOKEN from .env but creds are in openclaw.json
+  Fix:      Read bot token and chat_id from openclaw.json directly
+
+### LESSONS
+1. Cleanup TTL must be status-aware - never use flat TTL for mixed-status records
+2. Spam guard needs two layers: duplicate guard (primary) + no-repeat Telegram (secondary)
+3. Trim logic and guard boundary must use same operator (both <= or both <)
+4. Health check creds must match where system actually stores them
+5. Read FULL execution flow top to bottom before touching any code
+6. Map ALL bugs before fixing ANY of them

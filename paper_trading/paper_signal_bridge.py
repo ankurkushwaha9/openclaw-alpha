@@ -278,7 +278,7 @@ def guard_tier(signal: dict) -> tuple[bool, str]:
 def guard_exposure(ledger: dict, amount: float, total_portfolio: float) -> tuple[bool, str]:
     total_invested = sum(p["virtual_amount"] for p in ledger["open_positions"])
     new_exposure   = (total_invested + amount) / total_portfolio if total_portfolio > 0 else 1
-    if new_exposure < MAX_EXPOSURE_PCT:
+    if new_exposure <= MAX_EXPOSURE_PCT:
         return True, f"Exposure after: {new_exposure*100:.1f}% (max {MAX_EXPOSURE_PCT*100:.0f}%)"
     return False, f"Exposure {new_exposure*100:.1f}% exceeds {MAX_EXPOSURE_PCT*100:.0f}% max"
 
@@ -443,19 +443,31 @@ def run_bridge(dry_run=False):
 
         # --- Guard 3: Exposure ---
         total_invested = sum(p["virtual_amount"] for p in ledger["open_positions"])
+        # Trim bet to fit within remaining exposure headroom (avoid hard block when close to cap)
+        if total_portfolio > 0:
+            headroom = (MAX_EXPOSURE_PCT * total_portfolio) - total_invested
+            if headroom < amount and headroom >= MIN_BET:
+                log(f"  Exposure headroom ${headroom:.2f} < requested ${amount:.2f} - trimming bet to fit cap")
+                amount = round(headroom, 2)
         exposure_after = (total_invested + amount) / total_portfolio if total_portfolio > 0 else 1
         ok, reason = guard_exposure(ledger, amount, total_portfolio)
         log(f"  Guard 3 (exposure):  {'PASS' if ok else 'BLOCK'} — {reason}")
         if not ok:
-            send_telegram(
-                f"PAPER BRIDGE ALERT\n"
-                f"Signal BLOCKED by exposure guard\n"
-                f"- Market: {market_name[:50]}\n"
-                f"- Reason: {reason}\n"
-                f"- Post-trade exposure would be: {exposure_after*100:.1f}%\n"
-                f"- Portfolio currently at {(total_invested/total_portfolio*100):.1f}% deployed",
-                dry_run
+            # Only alert once - don't spam if already blocked before
+            already_blocked = any(
+                p.get("market_id") == market_id and p.get("status") == "blocked"
+                for p in pending["proposals"]
             )
+            if not already_blocked:
+                send_telegram(
+                    f"PAPER BRIDGE ALERT\n"
+                    f"Signal BLOCKED by exposure guard\n"
+                    f"- Market: {market_name[:50]}\n"
+                    f"- Reason: {reason}\n"
+                    f"- Post-trade exposure would be: {exposure_after*100:.1f}%\n"
+                    f"- Portfolio currently at {(total_invested/total_portfolio*100):.1f}% deployed",
+                    dry_run
+                )
             # Record blocked proposal so duplicate guard suppresses future spam
             blocked_record = {
                 "market_id":    market_id,
@@ -525,10 +537,15 @@ def run_bridge(dry_run=False):
     if not dry_run:
         now    = datetime.now(timezone.utc)
         before = len(pending["proposals"])
+        def _age_mins(p):
+            ts = datetime.fromisoformat(p["sent_at"])
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return (now - ts).total_seconds() / 60
+
         pending["proposals"] = [
             p for p in pending["proposals"]
-            if (now - (datetime.fromisoformat(p["sent_at"]).replace(tzinfo=timezone.utc) if datetime.fromisoformat(p["sent_at"]).tzinfo is None else datetime.fromisoformat(p["sent_at"]))).total_seconds() / 60
-               < PROPOSAL_TTL_MINS * 2
+            if _age_mins(p) < (2880 if p.get("status") == "blocked" else PROPOSAL_TTL_MINS * 2)
         ]
         after = len(pending["proposals"])
         if before != after:

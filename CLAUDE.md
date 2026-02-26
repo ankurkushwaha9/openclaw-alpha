@@ -1135,3 +1135,31 @@ Overall: 5/10 - Strong foundation, thin action layer
 Mission 9 goal: Push action layer from 2/10 to 7/10
 
 Good night. See you in the morning Ankur.
+
+---
+## SESSION UPDATE - Feb 27, 2026 (Morning)
+
+### BUG-002 - 4 Bugs Fixed In One Pass
+Context: Ankur shared screenshot - Cornyn/Paxton spam every 2hrs overnight despite BUG-001 fix
+
+Root cause: Cleanup TTL wiped blocked records after 60min. Next scan blocked record gone,
+duplicate guard passed, exposure guard fired, Telegram spammed again.
+
+All 4 bugs fixed in single code pass:
+  Bug 1: Cleanup TTL now status-aware (blocked=2880min, sent=60min) - ROOT CAUSE
+  Bug 2: Exposure guard no longer Telegrams if market already has blocked record
+  Bug 3: guard_exposure changed < to <= so trimmed bets at exactly 40% pass
+  Bug 4: health_check.py now reads Telegram creds from openclaw.json not .env
+
+Key lesson: Map ALL bugs before fixing ANY. Read full execution flow top to bottom first.
+Previous sessions fixed symptoms. This session found root cause.
+
+### CRON STATUS (confirmed active)
+  0 16 * * *    daily_monitor.py
+  0 */2 * * *   whale_tracker + bridge
+  30 */2 * * *  health_check
+
+### TRADING RULES UPDATE
+- Cleanup TTL must always be status-aware when mixing blocked vs sent records
+- Never use flat TTL applied to all proposal statuses
+- Trim logic and guard boundary must use identical comparison operators
