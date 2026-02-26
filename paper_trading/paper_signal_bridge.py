@@ -435,11 +435,17 @@ def run_bridge(dry_run=False):
         amount, sizing_rationale = calculate_trade_size(signal, total_portfolio)
         log(f"  Kelly sizing: {sizing_rationale}")
 
-        # --- Guard 2: Exposure ---
+        # --- Guard 2: Duplicate (before exposure to stop spam) ---
+        ok, reason = guard_duplicate(ledger, pending, market_id)
+        log(f"  Guard 2 (duplicate): {'PASS' if ok else 'BLOCK'} — {reason}")
+        if not ok:
+            continue
+
+        # --- Guard 3: Exposure ---
         total_invested = sum(p["virtual_amount"] for p in ledger["open_positions"])
         exposure_after = (total_invested + amount) / total_portfolio if total_portfolio > 0 else 1
         ok, reason = guard_exposure(ledger, amount, total_portfolio)
-        log(f"  Guard 2 (exposure):  {'PASS' if ok else 'BLOCK'} — {reason}")
+        log(f"  Guard 3 (exposure):  {'PASS' if ok else 'BLOCK'} — {reason}")
         if not ok:
             send_telegram(
                 f"PAPER BRIDGE ALERT\n"
@@ -462,12 +468,6 @@ def run_bridge(dry_run=False):
             if not dry_run:
                 save_pending(pending)
                 log(f"Blocked proposal recorded — future spam suppressed")
-            continue
-
-        # --- Guard 3: Duplicate ---
-        ok, reason = guard_duplicate(ledger, pending, market_id)
-        log(f"  Guard 3 (duplicate): {'PASS' if ok else 'BLOCK'} — {reason}")
-        if not ok:
             continue
 
         # --- Guard 4: Category cap ---
