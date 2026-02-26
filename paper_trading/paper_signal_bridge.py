@@ -289,10 +289,11 @@ def guard_duplicate(ledger: dict, pending: dict, market_id: str) -> tuple[bool, 
             return False, f"Already open in {market_id[:16]}..."
     now = datetime.now(timezone.utc)
     for prop in pending.get("proposals", []):
-        if prop.get("market_id") == market_id and prop.get("status") == "sent":
+        if prop.get("market_id") == market_id and prop.get("status") in ("sent", "blocked"):
             age_mins = (now - datetime.fromisoformat(prop["sent_at"])).total_seconds() / 60
-            if age_mins < PROPOSAL_TTL_MINS:
-                return False, f"Proposal sent {age_mins:.0f}min ago (TTL {PROPOSAL_TTL_MINS}min)"
+            ttl = PROPOSAL_TTL_MINS if prop.get("status") == "sent" else 2880
+            if age_mins < ttl:
+                return False, f"Proposal blocked {age_mins:.0f}min ago (TTL {ttl}min)"
     return True, "Market is fresh — no duplicate"
 
 
