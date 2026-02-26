@@ -784,3 +784,169 @@ Priorities:
 1. Composio audit (250+ apps may already be wired)
 2. Register first 5 live tools for Alpha
 3. Resolution timeline guard for legal markets
+
+---
+## MISSION 9 - FULL ARCHITECTURAL BRAINSTORM (Feb 26, 2026)
+
+### MISSION 9 DEFINITION
+Mission 9 = Alpha gains ability to take actions in the world beyond talking and trading.
+Alpha becomes an AGENT not just a bot.
+
+Before Mission 9: Alpha watches, alerts, proposes
+After Mission 9:  Alpha searches web, sends emails, posts Instagram, reads/writes Notion
+
+### THE 6 FAILURE MODES TO AVOID
+
+Failure Mode 1 - Tool Fires Without Permission
+  Problem: Alpha calls Gmail and sends email Ankur never approved
+  Prevention: Every Composio tool call goes through same YES/NO Telegram gate as trades
+
+Failure Mode 2 - Wrong Account Used
+  Problem: Alpha posts to wrong Instagram or sends from wrong Gmail
+  Prevention: Pin specific connected_account_id in tool_registry.json. Never auto-select.
+
+Failure Mode 3 - Silent Failures
+  Problem: Composio returns error. Alpha thinks it worked. No log. No alert.
+  Prevention: Every tool call result logged to tools/tool_log.json + Telegram confirmation
+
+Failure Mode 4 - Infinite Tool Loops
+  Problem: Alpha calls tool -> gets result -> calls another -> loop forever
+  Prevention: Hard limit of 3 tool calls per conversation turn. Then ask Ankur.
+
+Failure Mode 5 - Credentials Exposed
+  Problem: Composio API key ends up in log file or CLAUDE.md
+  Prevention: Store ONLY in .env. Never log. Never echo.
+
+Failure Mode 6 - Tool Registered But Never Tested
+  Problem: Register 5 tools, declare victory, next real use fails
+  Prevention: Every tool must pass all 5 test gates before marked as registered
+
+### THE ARCHITECTURE - 3 LAYERS
+
+Layer 1 - Tool Registry (tools/tool_registry.json)
+  Single source of truth for all tools Alpha can use
+  Fields per tool: name, composio_slug, purpose, account_id, requires_approval, tested, test_date
+  Rule: If a tool is not in this file it does not exist for Alpha
+
+Layer 2 - Tool Executor (tools/tool_executor.py)
+  The ONLY way Alpha ever calls a tool. No direct Composio calls anywhere else.
+  Flow: lookup registry -> check approval needed -> Telegram gate if yes -> call Composio
+        -> log result to tool_log.json -> send Telegram confirmation -> return result
+
+Layer 3 - Integration Points (where tools plug into existing system)
+  whale_tracker detects signal
+    -> paper_signal_bridge guards pass
+    -> tool_executor calls web_search (auto, no approval)
+    -> "Is there confirming news for this signal?"
+    -> Telegram proposal now includes: "News confirmation: YES/NO + headline"
+    -> Ankur makes better decision with more context
+
+### THE 5 TOOLS TO REGISTER (in priority order)
+
+Tool 1 - Web Search (Exa)
+  Purpose: News confirmation for whale signals
+  Risk: NONE - read only
+  Approval required: NO
+
+Tool 2 - Gmail Read
+  Purpose: Check for Polymarket resolution emails
+  Risk: NONE - read only
+  Approval required: NO
+
+Tool 3 - Gmail Send
+  Purpose: Weekly trade report to Ankur
+  Risk: LOW
+  Approval required: YES
+
+Tool 4 - Notion Write
+  Purpose: Log trades to Notion database
+  Risk: LOW
+  Approval required: YES
+
+Tool 5 - Instagram Post
+  Purpose: First @alpharealm9 content post
+  Risk: HIGH
+  Approval required: YES + dry run mode first
+
+Strategy: Start with tools 1 and 2 (read-only, zero risk)
+          Prove architecture works FIRST
+          Then add 3, 4, 5 one at a time
+
+### THE 5-GATE TESTING PROTOCOL (Every Tool Must Pass All 5)
+
+Gate 1 - Connection Check
+  COMPOSIO_MANAGE_CONNECTIONS returns has_active_connection: true
+
+Gate 2 - Schema Check
+  COMPOSIO_GET_TOOL_SCHEMAS returns full input_schema (not schemaRef)
+
+Gate 3 - Dry Run
+  Call tool with test arguments. Verify response structure.
+
+Gate 4 - Integration Test
+  Call tool from within actual system (not standalone script)
+  Verify log written, Telegram confirmation sent
+
+Gate 5 - Failure Test
+  Deliberately pass wrong arguments
+  Verify error caught, logged, Ankur notified, system does NOT crash
+
+Only after all 5 gates pass -> tool marked tested: true in registry
+
+### RESOLUTION TIMELINE GUARD (Guard 5 - Rojas Lesson)
+
+Add to paper_signal_bridge.py as Guard 5:
+  Legal keywords: guilty, convicted, verdict, trial, case, charges
+  If legal keyword found AND days_to_resolve < 30 -> BLOCK
+  Reason: Legal case unlikely to resolve in <30 days
+  This prevents Rojas-style bad entries forever
+
+New guard order after this:
+  Guard 1: Tier filter
+  Guard 2: Duplicate (before exposure - BUG-001 lesson)
+  Guard 3: Exposure
+  Guard 4: Category cap
+  Guard 5: Resolution timeline (NEW)
+
+### MISSION 9 EXECUTION PLAN (5 Phases)
+
+Phase 1 - Foundation (Do First)
+  1. Create tools/ directory on EC2
+  2. Create tools/tool_registry.json with 5 planned tools
+  3. Create tools/tool_executor.py with logging + approval gate
+  4. Test Composio API key working from EC2
+
+Phase 2 - First Two Tools (Read Only, Zero Risk)
+  5. Register + test Web Search tool (all 5 gates)
+  6. Register + test Gmail Read tool (all 5 gates)
+  7. Wire web search into paper_signal_bridge.py as news confirmation
+  8. Test: does whale signal Telegram now include news confirmation?
+
+Phase 3 - Resolution Timeline Guard
+  9. Add Guard 5 to paper_signal_bridge.py
+  10. Test with synthetic Rojas-style signal - must block
+  11. Push to GitHub, update BUGS.md
+
+Phase 4 - Remaining 3 Tools
+  12. Gmail Send (with approval gate)
+  13. Notion Write (with approval gate)
+  14. Instagram Post (approval gate + dry run mode)
+
+Phase 5 - Documentation
+  15. Update CLAUDE.md, TOOLS.md, ALPHA_MEMORY.md
+  16. Update CURRENT_MISSION.md to Mission 10
+
+### WHAT WE WILL NOT DO (BUG-001 Lessons Applied)
+- Will NOT write code until architecture approved by Ankur
+- Will NOT skip testing gates to go faster
+- Will NOT patch symptoms - will read full execution flow first
+- Will NOT declare tool working until all 5 gates pass
+- Will NOT mix multiple concerns in one commit
+- Will NOT declare victory without end-to-end proof
+
+### PENDING QUESTIONS FOR ANKUR (Answer before starting)
+Q1: Which tool first? Web search (safest) or jump to Instagram?
+Q2: Approval gate: every tool call or only write operations?
+Q3: Tool limit per signal: how many tools can Alpha chain automatically? 1? 3?
+
+### STATUS: BRAINSTORM COMPLETE - AWAITING ANKUR APPROVAL TO START PHASE 1
