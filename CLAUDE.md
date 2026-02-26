@@ -1163,3 +1163,67 @@ Previous sessions fixed symptoms. This session found root cause.
 - Cleanup TTL must always be status-aware when mixing blocked vs sent records
 - Never use flat TTL applied to all proposal statuses
 - Trim logic and guard boundary must use identical comparison operators
+
+---
+## INFRASTRUCTURE AUDIT - Feb 27, 2026 (Verified Against EC2 Reality)
+
+### WHY THIS EXISTS
+New chat identified 6 gaps between CLAUDE.md and actual EC2 state by reading architecture diagrams.
+Every item below is VERIFIED by running actual commands on EC2 - not assumed from docs.
+Rule going forward: Verify infrastructure against EC2 reality at start of every new mission.
+
+### CONFIRMED INFRASTRUCTURE (EC2 Verified)
+
+Instance Type: m7i-flex.large (confirmed via IMDSv2 metadata)
+
+Ollama + Gemma 2B:
+  Status: LIVE AND RUNNING (systemctl active)
+  Binary: /usr/local/bin/ollama
+  Model: gemma2:2b (1.6GB, installed 2 weeks ago)
+  Endpoint: http://127.0.0.1:11434
+  Cost: ZERO - fully local, no API calls
+  In openclaw.json: YES - wired as provider
+  Use case: 4th model tier below Kimi - cheapest triage tasks
+
+Docker Engine:
+  Status: ACTIVE
+  Container: n8n-n8n-1 | Up 25+ hours | Port 5678->5678/tcp
+  n8n status: RUNNING in Docker, ZERO workflows built
+  Implication: n8n workflows can start immediately, no setup needed
+
+API Gateway / Telegram Webhook:
+  Status: NOT DEPLOYED - aspirational in diagram only
+  Reality: Bot polling mode only (no webhookUrl in openclaw.json)
+  Gateway: local only (mode: local, bind: loopback, port 18789)
+  Implication: AWS API Gateway is future work, not current
+
+Smart Router (Confidence Scoring + Fallback Logic):
+  Status: NOT CODED - OpenClaw built-in fallback chain only
+  Reality: openclaw.json agents.defaults.model shows:
+    primary: nvidia-nim/moonshotai/kimi-k2.5
+    fallbacks: [claude-sonnet, claude-opus]
+  SKILL.md: 104 lines of documentation (not live code)
+  cli.js + commands.js exist in smart-router folder
+  Implication: Diagram internals (confidence scoring, task analyzer) are aspirational
+
+Vector DB (Chroma / FAISS):
+  Status: NOT INSTALLED
+  chromadb: not found | faiss: not found
+  Memory: 100% file-based on EBS (MEMORY.md, ALPHA_MEMORY.md etc)
+  Implication: Semantic memory is future capability, not current
+
+### TRUE MODEL ROUTING (4 Tiers - Verified)
+Tier 1: Gemma 2B (Ollama local) - FREE - bulk scanning, simple triage
+Tier 2: Kimi K2.5 (NIM API)     - FREE - 85% of tasks
+Tier 3: Claude Sonnet            - PAID - signal validation, Telegram drafts
+Tier 4: Claude Opus              - PAID - complex reasoning, edge cases only
+
+### MANDATORY RULE ADDED
+At the start of EVERY new mission run this audit:
+  1. Verify cron jobs active
+  2. Verify all 3 model tiers reachable
+  3. Verify Docker + n8n container running
+  4. Verify Ollama + Gemma 2B responding
+  5. Confirm pending_proposals.json state
+  6. Confirm ledger.json balance and positions
+Do not start mission work until audit passes.
