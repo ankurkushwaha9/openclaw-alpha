@@ -117,3 +117,8 @@ v3: Fixed guard to check both sent+blocked status
 v3 gap: blocked TTL was 30min same as sent - expired and spammed again
 v4 (current): Blocked proposals now suppressed 48hrs (2880min) vs 30min for sent
 Lesson: Exposure guard blocks are semi-permanent - need long TTL not short
+
+v4 gap: Cleanup section had datetime timezone mismatch error
+        offset-naive vs offset-aware datetime comparison crashed bridge
+v5 (final): Added .replace(tzinfo=timezone.utc) for naive datetimes in cleanup
+Status: FIXED v5 - awaiting next scan confirmation
