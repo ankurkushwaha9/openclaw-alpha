@@ -527,7 +527,7 @@ def run_bridge(dry_run=False):
         before = len(pending["proposals"])
         pending["proposals"] = [
             p for p in pending["proposals"]
-            if (now - datetime.fromisoformat(p["sent_at"]).replace(tzinfo=timezone.utc) if datetime.fromisoformat(p["sent_at"]).tzinfo is None else datetime.fromisoformat(p["sent_at"])).total_seconds() / 60
+            if (now - (datetime.fromisoformat(p["sent_at"]).replace(tzinfo=timezone.utc) if datetime.fromisoformat(p["sent_at"]).tzinfo is None else datetime.fromisoformat(p["sent_at"]))).total_seconds() / 60
                < PROPOSAL_TTL_MINS * 2
         ]
         after = len(pending["proposals"])
