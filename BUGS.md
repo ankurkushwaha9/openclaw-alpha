@@ -6,7 +6,7 @@
 
 ## BUG-001 | Duplicate Guard Spam — Same Market Proposed Every 2 Hours
 Date: 2026-02-25
-Status: FIXED
+Status: FIXED v3
 Severity: HIGH
 Affected: paper_signal_bridge.py + pending_proposals.json
 
@@ -108,3 +108,12 @@ FILES CHANGED:
 PREVENTION:
 LESSON:
 
+
+### BUG-001 Fix History
+v1: Manually injected Cornyn into pending_proposals.json
+v2: Bridge records blocked proposals with status=blocked
+v2 gap: duplicate guard only checked status=sent not status=blocked
+v3: Fixed guard to check both sent+blocked status
+v3 gap: blocked TTL was 30min same as sent - expired and spammed again
+v4 (current): Blocked proposals now suppressed 48hrs (2880min) vs 30min for sent
+Lesson: Exposure guard blocks are semi-permanent - need long TTL not short
