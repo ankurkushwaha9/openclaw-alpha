@@ -51,6 +51,15 @@ Security:
   Security score: 35/35
 
 --------------------------------------------------------------------------------
+DISK USAGE (Verified Feb 27, 2026):
+  Total:      19GB EBS
+  Used:       14GB (77%)
+  Free:       4.4GB
+  Root cause: Ollama=4.3GB | Docker/n8n=973MB | .openclaw=358MB
+  Status:     SAFE for Mission 9 - no cleanup needed
+  Action:     Monitor - alert Ankur if hits 85%+
+  Long term:  Consider EBS upgrade 20GB->30GB (~1 USD/month)
+
 SECTION 3: MODEL ROUTING (4 TIERS - VERIFIED)
 --------------------------------------------------------------------------------
 
