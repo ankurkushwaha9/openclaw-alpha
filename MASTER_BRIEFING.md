@@ -201,13 +201,35 @@ Chainstack:
 Composio:
   Status: API key in .env, NO CLI installed on EC2
   All calls must be via direct HTTP API (skill.md covers this)
-  Connected accounts (VERIFIED via live API call Feb 27):
-    instagram:      ACTIVE ✅ (ca_EFhfbyTvheEB + ca_RM9CSBPDCaYI)
-    gmail:          NOT connected ❌
-    github:         NOT connected ❌
-    notion:         NOT connected ❌
-    googlecalendar: NOT connected ❌
-  Action: Gmail/GitHub/Notion need OAuth connection before use
+  Total accounts: 19 (VERIFIED via live API v1 call Feb 27, 2026)
+
+  ACTIVE (9) - Ready to use RIGHT NOW:
+    instagram:      ACTIVE ✅ (2 accounts - ca_EFhfbyTvheEB + ca_RM9CSBPDCaYI)
+    facebook:       ACTIVE ✅ (2 accounts)
+    fireflies:      ACTIVE ✅
+    github:         ACTIVE ✅ (1 active connection)
+    heygen:         ACTIVE ✅
+    notion:         ACTIVE ✅ (1 active connection)
+    perplexityai:   ACTIVE ✅
+
+  EXPIRED (4) - Were connected, tokens need re-auth:
+    gmail:          EXPIRED ❌ (needs OAuth re-auth)
+    googlecalendar: EXPIRED ❌ (needs OAuth re-auth)
+    github:         1 old expired (has 1 active above)
+    notion:         1 old expired (has 1 active above)
+
+  INITIALIZING/INITIATED (6) - Stuck mid-setup, incomplete:
+    gmail:          stuck - never completed OAuth
+    googlecalendar: stuck - never completed OAuth
+    github:         duplicate in-progress
+    notion:         duplicate in-progress
+    fireflies:      duplicate
+    heygen:         duplicate
+
+  KEY INSIGHT: Bot massively underreported Composio.
+  GitHub, Notion, HeyGen, Perplexity, Facebook, Fireflies all ACTIVE.
+  This means Mission 9 tool registration is much faster than planned.
+  Most tools don't need fresh OAuth - they are already connected.
 
 --------------------------------------------------------------------------------
 SECTION 9: MISSION 9 - FULL PLAN (READY TO EXECUTE)
@@ -232,17 +254,31 @@ Tool 2 - Groq Text Inference (FREE - needs API key from Ankur first)
   Saves: API cost on Kimi K2.5
   Blocker: Ankur needs to get key at console.groq.com
 
-Tool 3 - Gmail Read via Composio (needs OAuth connection first)
-  Use:   Check Polymarket resolution emails
+Tool 3 - Perplexity AI via Composio (ALREADY ACTIVE ✅ - no setup needed)
+  Use:   AI-powered web search with citations for signal confirmation
   Risk:  NONE - read only
+  Note:  perplexityai connection is ACTIVE - can use immediately
 
-Tool 4 - Gmail Send via Composio (needs OAuth + approval gate)
-  Use:   Weekly trade reports to Ankur
+Tool 4 - Notion via Composio (ALREADY ACTIVE ✅ - no setup needed)
+  Use:   Log trades, mission notes, research to Notion
   Risk:  LOW - approval required
 
-Tool 5 - Instagram Post via Composio (ALREADY CONNECTED ✅)
-  Use:   @alpharealm9 content posts
-  Risk:  HIGH - approval gate + dry run mode first
+Tool 5 - HeyGen via Composio (ALREADY ACTIVE ✅ - no setup needed)
+  Use:   Video generation for @alpharealm9 Instagram reels
+  Risk:  MEDIUM - approval gate + dry run first
+
+Tool 6 - GitHub via Composio (ALREADY ACTIVE ✅ - no setup needed)
+  Use:   Create issues, update docs, manage repo from Alpha
+  Risk:  LOW - approval required
+
+Tool 7 - Gmail via Composio (NEEDS RE-AUTH - token expired)
+  Use:   Weekly trade reports to Ankur
+  Risk:  LOW - approval required
+  Action: Ankur needs to re-authenticate Gmail OAuth
+
+REVISED INSIGHT: Tools 3-6 are already connected.
+Mission 9 is now about BUILDING the executor layer, not OAuth setup.
+This makes Mission 9 significantly faster than originally planned.
 
 THE 3-LAYER ARCHITECTURE:
 

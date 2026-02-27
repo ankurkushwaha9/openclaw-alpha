@@ -1227,3 +1227,52 @@ At the start of EVERY new mission run this audit:
   5. Confirm pending_proposals.json state
   6. Confirm ledger.json balance and positions
 Do not start mission work until audit passes.
+
+---
+## COMPOSIO FULL AUDIT - Feb 27, 2026 (Verified via API v1)
+
+### WHY THIS EXISTS
+Alpha Bot underreported Composio in both self-descriptions.
+This is the verified truth from a live API call to v1/connectedAccounts.
+Total accounts found: 19
+
+### ACTIVE RIGHT NOW (9 connections - ready to use)
+  instagram:    2 accounts ACTIVE (ca_EFhfbyTvheEB + ca_RM9CSBPDCaYI)
+  facebook:     2 accounts ACTIVE
+  fireflies:    ACTIVE
+  github:       ACTIVE (1 of 3 connections is active)
+  heygen:       ACTIVE
+  notion:       ACTIVE (1 of 3 connections is active)
+  perplexityai: ACTIVE
+
+### EXPIRED (4 - need re-auth to use)
+  gmail:          EXPIRED - needs OAuth re-authentication
+  googlecalendar: EXPIRED - needs OAuth re-authentication
+  github:         1 old expired (active one still works)
+  notion:         1 old expired (active one still works)
+
+### STUCK / INCOMPLETE (6 - never finished OAuth setup)
+  gmail, googlecalendar, github, notion, fireflies, heygen (all duplicates)
+
+### KEY IMPACT ON MISSION 9
+BEFORE this audit: Thought we needed OAuth for most tools
+AFTER this audit:  GitHub, Notion, HeyGen, Perplexity, Facebook, Fireflies ALREADY ACTIVE
+
+Mission 9 is now about building the EXECUTOR LAYER not OAuth setup.
+Significantly faster than originally planned.
+
+### REVISED TOOL BUILD ORDER FOR MISSION 9
+1. Brave Search    - key in openclaw.json, HTTP 200 confirmed, build caller script
+2. Perplexity AI   - ALREADY ACTIVE via Composio, wire it in immediately
+3. Notion          - ALREADY ACTIVE via Composio, use for trade logging
+4. GitHub          - ALREADY ACTIVE via Composio, use for issue/doc management
+5. HeyGen          - ALREADY ACTIVE via Composio, use for Instagram reels
+6. Gmail           - EXPIRED, Ankur needs to re-auth before use
+7. Groq            - NO KEY yet, Ankur gets free from console.groq.com
+
+### WHAT BOT GETS WRONG ABOUT ITSELF
+Bot reads memory files but does not probe live APIs to verify state.
+Always verify Composio connections via:
+  curl https://backend.composio.dev/api/v1/connectedAccounts
+  with x-api-key header from .env COMPOSIO_API_KEY
+Do NOT trust bot's self-reported Composio state without live verification.
