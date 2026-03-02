@@ -197,3 +197,166 @@ Bug 4 - Health check cannot find Telegram creds
 4. Health check creds must match where system actually stores them
 5. Read FULL execution flow top to bottom before touching any code
 6. Map ALL bugs before fixing ANY of them
+
+---
+
+## BUG-004 | Bridge Log Duplicate Writes — 273KB Bloat / SSM Timeouts
+Date: 2026-03-01
+Status: FIXING
+Severity: MEDIUM
+Affected: paper_trading/paper_signal_bridge.py, paper_trading/bridge.log
+
+SYMPTOM:
+bridge.log grew to 273KB / 3,861 lines causing SSM reads to timeout.
+Every log entry appeared 2x (sometimes 3x) with identical timestamps.
+Claude could not read bridge.log via SSM - had to ask for manual runs.
+
+ROOT CAUSE:
+log() function in paper_signal_bridge.py does TWO writes per call:
+  1. print(line)  → stdout → cron captures via >> bridge.log
+  2. open(BRIDGE_LOG, "a") → writes directly to bridge.log
+Cron line: python paper_signal_bridge.py >> paper_trading/bridge.log 2>&1
+Both paths land in the same file = every log line written exactly 2x.
+With ~30 log calls per run × 2x = 60 lines per run instead of 30.
+Running every 2hrs × days = rapid bloat.
+
+FIX APPLIED:
+1. Archived bloated bridge.log → bridge.log.bak (273KB preserved)
+2. Created fresh empty bridge.log
+3. Removed print(line) from log() function — kept direct file write
+   Cron >> redirect now captures nothing meaningful
+   Result: exactly 1 write per log call going forward
+
+FILES CHANGED:
+- paper_trading/paper_signal_bridge.py (removed print(line) from log())
+- paper_trading/bridge.log (archived → .bak, fresh file created)
+
+PREVENTION:
+Never mix stdout redirect (>>) in cron AND internal file writes in same script.
+Choose one logging path — internal file write preferred (gives more control).
+
+LESSON:
+Read the cron AND the script together — bugs often live at the boundary.
+A 5-minute code read would have caught this before 273KB of duplicate logs.
+
+---
+
+## BUG-004 | Bridge Log Duplicate Writes - 273KB Bloat / SSM Timeouts
+Date: 2026-03-01
+Status: FIXED
+Severity: MEDIUM
+Affected: paper_trading/paper_signal_bridge.py, paper_trading/bridge.log
+
+SYMPTOM:
+bridge.log grew to 273KB / 3,861 lines causing SSM reads to timeout.
+Every log entry appeared 2x with identical timestamps.
+Claude could not read bridge.log via SSM - had to ask for manual runs.
+
+ROOT CAUSE:
+log() function does TWO writes per call:
+  1. print(line) - stdout - cron captures via >> bridge.log
+  2. open(BRIDGE_LOG, "a") - writes directly to bridge.log
+Cron: python paper_signal_bridge.py >> paper_trading/bridge.log 2>&1
+Both paths land in the same file = every log line written exactly 2x.
+30 log calls per run x 2 = 60 lines instead of 30. Every 2hrs = rapid bloat.
+
+FIX APPLIED:
+1. Archived bloated bridge.log to bridge.log.bak (273KB preserved)
+2. Created fresh empty bridge.log
+3. Removed print(line) from log() function - kept direct file write only
+   Result: exactly 1 write per log call going forward
+
+FILES CHANGED:
+- paper_trading/paper_signal_bridge.py (removed print(line) from log())
+- paper_trading/bridge.log (archived to .bak, fresh file created)
+
+PREVENTION:
+Never mix stdout redirect (>>) in cron AND internal file writes in same script.
+Choose one logging path - internal file write preferred.
+
+LESSON:
+Read the cron AND the script together - bugs live at the boundary.
+A 5-minute code read would have caught this before 273KB of duplicate logs.
+
+---
+
+## BUG-005 | Iran Positions Not Resolved - Stale polyclaw/positions.json + ALPHA_MEMORY.md
+Date: 2026-03-01
+Status: FIXED
+Severity: HIGH
+Affected: polyclaw/positions.json, ALPHA_MEMORY.md
+
+SYMPTOM:
+All 5 Iran positions still showing status "open" in polyclaw/positions.json
+even though all Iran markets resolved on Feb 28, 2026 (US struck Iran).
+ALPHA_MEMORY.md last updated Feb 24 - has no record of Iran trades at all.
+Bot reporting wrong wallet balance (~$41) vs reality ($66 USDC).
+Health check showing "2 positions / -27.3%" - Iran trades invisible to system.
+
+ROOT CAUSE:
+market-monitor.js crashed on Feb 16 with Web3 constructor error (Node v24.13.0).
+Monitor never ran again after crash - no position resolution tracking.
+polyclaw/positions.json never updated after Feb 16.
+ALPHA_MEMORY.md never updated with Iran trade entries or resolution.
+Result: Bot completely blind to Feb 28 strike event and resulting P&L.
+
+IRAN POSITIONS RESOLUTION (confirmed via Polymarket + news sources):
+1. US strikes Iran by Feb 28 - YES - WIN  - entry $1.00 @ 0.175 - payout $5.71 - profit +$4.71
+2. US strikes Iran by Feb 16 - NO  - WIN  - entry $3.00 @ 0.9955 - payout $3.01 - profit +$0.01
+3. US strikes Iran by Feb 20 - NO  - WIN  - entry $3.00 @ 0.935 - payout $3.21 - profit +$0.21
+4. US strikes Iran by Feb 20 - YES - LOSS - entry $2.00 @ 0.065 - payout $0.00 - profit -$2.00
+5. US strikes Iran by Feb 16 - NO  - WIN  - entry $2.00 @ 0.9955 - payout $2.01 - profit +$0.01
+NET: Invested $11.00 - Returned $13.94 - Profit +$2.94 USDC
+
+FIX APPLIED:
+1. Updated polyclaw/positions.json - all 5 Iran positions marked resolved with P&L
+2. Updated ALPHA_MEMORY.md - added Iran trade history + corrected wallet balance
+
+FILES CHANGED:
+- polyclaw/positions.json
+- ALPHA_MEMORY.md
+
+PREVENTION:
+Fix market-monitor.js Web3 crash (BUG-006) so future resolutions auto-tracked.
+Update ALPHA_MEMORY.md at end of every session where real money state changes.
+
+LESSON:
+A crashed monitor creates invisible blind spots - system says OK but data is stale.
+Always verify monitor process is running after any EC2 reboot or code change.
+
+---
+
+## BUG-006 | Health Check "2 Positions / -27.3%" Misread As Bug
+Date: 2026-03-01
+Status: NOT A BUG - Working As Designed
+Severity: N/A
+Affected: scripts/health_check.py
+
+SYMPTOM:
+Health check reporting "Balance: $48.00 | Positions: 2 | P&L: -27.3%" every 2 hours.
+Looked wrong compared to real wallet ($66 USDC, 8 positions).
+
+ROOT CAUSE:
+Health check reads paper trading ledger.json - NOT real money positions.
+Numbers are 100% correct for the paper system:
+  - $48 virtual balance (paper started at $66, Rojas position losing)
+  - 2 open paper positions (OBAA Best Picture + Rojas Texas Case)
+  - -27.3% = ($48 - $66) / $66 * 100 = correct paper P&L
+Real money tracked separately in polyclaw/positions.json - different system.
+
+FIX APPLIED:
+No logic fix needed. One clarity improvement only:
+Changed portfolio message from "Balance:" to "PAPER | Balance:"
+So future health checks clearly say PAPER to avoid confusion.
+
+FILES CHANGED:
+- scripts/health_check.py (label only - no logic change)
+
+SIDE EFFECT NOTED:
+BUG-004 fix (archiving bridge.log) caused temporary empty bridge.log.
+Health check will show "No scan found" until next cron run writes fresh START entry.
+Self-heals automatically. Fix: copy tail of bridge.log.bak to bridge.log.
+
+LESSON:
+Always label which system (PAPER vs REAL) in health check messages.
+Two parallel systems with similar numbers will always cause confusion without labels.

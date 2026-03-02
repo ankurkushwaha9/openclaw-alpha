@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-02-25 (v15.0 - Missions 5-8 complete + GitHub hygiene + BUGS.md + repo PUBLIC)
+# Last Updated: 2026-03-02 (v17.0 - Fix-4 COMPLETE + dev->master merged + fully synced)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -184,7 +184,7 @@ Skills derived: skills/finance/SKILL.md and skills/data/SKILL.md
 ### Wallet
 Address:   0x6695ebAC8bb8d7636d6744643DeDE27eD67bccB3
 Network:   Polygon (MATIC) | Token: USDC.e
-Balance:   ~$66.00 USDC.e (as of Feb 22, 2026)
+Balance:   ~$66.00 USDC.e (as of Mar 1, 2026 - includes +$2.94 Iran profits resolved Feb 28)
 Gas:       ~19.49 POL - sufficient for months
 Approvals: SET permanently (completed Feb 19, 2026)
 
@@ -245,7 +245,8 @@ Best Actor (Chalamet):    position ID: 4025c231 | market ID: 614008 | Entry: 79c
 Best Supporting (Teyana): position ID: 77927190 | market ID: 614355 | Entry: 70c
 Total exposure: $25 - NO new trades until resolved
 Note: Chalamet at ~71c (down from 79c entry, -10%) - monitor
-Note: Teyana at ~52c (down from 70c entry, -25%) - ALERT triggered Feb 24 - watch closely
+Note: Teyana at ~48c (down from 70c entry, -31%) - ALERT active Mar 1 - watch closely
+Note: Chalamet at ~68c (down from 79c entry, -14%) - monitor
 
 ---
 
@@ -412,6 +413,13 @@ Rule: If a skill file exists for your task, read it. Don't improvise.
 
 MEMORY.md, ALPHA_MEMORY.md, memory/YYYY-MM-DD.md, TRADING_LOG.md, FUTURE_TRADE_WATCHLIST.md
 
+### MEMORY FILE RULES (STRICT - DO NOT VIOLATE)
+- MEMORY.md = IDENTITY ONLY (who Ankur is, timezone, communication style, analysis format, lessons)
+- ALPHA_MEMORY.md = ALL OPERATIONAL STATE (balance, positions, system status, recent trades)
+- NEVER write wallet balances, positions, API keys, or system status to MEMORY.md
+- NEVER write RUNNING/ACTIVE status to MEMORY.md without a successful health check confirming it
+- If unsure which file: identity/preferences go in MEMORY.md, everything else goes in ALPHA_MEMORY.md
+
 End of session protocol:
 - Update ALPHA_MEMORY.md with key decisions
 - Add entry to memory/YYYY-MM-DD.md
@@ -472,8 +480,12 @@ Action: Capability Statement needs US ownership language
 
 ## TRADING HISTORY - KEY LESSONS
 
-Phase 0 - Iran Trades (ALL RESOLVED, -$2.81 net):
-Lesson: NO bets on timed geopolitical events = correct play
+Phase 0 - Iran Trades (ALL RESOLVED, +$2.94 net - CORRECTED Mar 1 2026):
+  5 positions entered Feb 16 2026 - all resolved by Feb 28 2026 (US struck Iran)
+  YES Feb28 WIN +$4.71 | NO Feb16 WIN +$0.01x2 | NO Feb20 WIN +$0.21 | YES Feb20 LOSS -$2.00
+  Invested $11.00 | Returned $13.94 | Net +$2.94 USDC | 4W 1L
+  All resolved in polyclaw/positions.json - profits confirmed in wallet
+Lesson: Geopolitical YES + paired NO hedges = profitable when timed correctly
 
 Phase 1 - Oscar Trades (Active, resolve March 15):
 $25 total across 3 markets - holding, monitor only
@@ -497,6 +509,13 @@ Master Lessons:
 - SSM runs as root: never use ~ for paths in scripts, always use /home/ubuntu/ explicitly
 - Teyana (Best Supporting) down 25% from entry (70c->52c) as of Feb 24 - watch closely
 - Bridge pending_proposals.json may be legacy list format - always normalise to dict on load
+- bridge.log grew to 273KB because log() did print()+file write AND cron did >> redirect = 2x per call
+- Never mix stdout cron redirect (>>) AND internal file writes in same script - pick one
+- market-monitor.js crashed Feb 16 on Web3 constructor error (Node v24) - silent failure for 2 weeks
+- A crashed monitor = invisible blind spots - health check says OK but data is stale underneath
+- ALPHA_MEMORY.md must be updated after every session where real money state changes
+- Iran P&L was WRONG in CLAUDE.md (-$2.81) - actual was +$2.94 - always verify from positions.json
+- Read CLAUDE.md + BUGS.md at start of EVERY new session - they are ground truth
 
 ---
 
@@ -510,6 +529,43 @@ Mission 5 DONE: Paper Trading Engine - All 3 phases complete (Feb 23, 2026)
 Mission 6 DONE: Whale-to-Paper Bridge - fully built and wired Feb 24, 2026
 Mission 7 DONE: Active Paper Trading - FULLY LIVE Feb 24, 2026
 Mission 8 DONE: End-to-End Pipeline Test - COMPLETE Feb 24, 2026
+Mission 9 IN PROGRESS: System Reconciliation + Bug Fixes - Mar 1, 2026
+  -> BUG-004 FIXED: bridge.log duplicate writes (print+file = 2x bloat, 273KB)
+     Fix: removed print(line) from log() - kept direct file write only
+     bridge.log archived to .bak, fresh log started
+  -> BUG-005 FIXED: Iran positions stale since Feb 16 monitor crash
+     Fix: polyclaw/positions.json updated - all 5 Iran positions marked resolved with P&L
+     Fix: ALPHA_MEMORY.md updated to v3.1 - Iran trades added, balance corrected $41->$66
+  -> FIX-3 DONE: Health check "2 positions / -27.3%" = NOT A BUG (paper ledger correct)
+     Added PAPER label to health check message for clarity
+     Fixed bridge.log [START] entry so health check stays green
+     BUG-006 logged as NOT A BUG in BUGS.md
+  -> FIX-4 COMPLETE (Mar 2 2026): check_resolutions() added to daily_monitor.py
+  -> MARKET-MONITOR.JS ANALYSIS COMPLETE (Mar 1 2026):
+     ROOT CAUSE: Web3 v3 syntax used (const Web3 = require) but v4.16.0 installed (needs destructure)
+     DECISION: RETIRE market-monitor.js - orphan script, no cron, no integration, scans opportunities NOT resolutions
+     FIX-4 DONE: check_resolutions() added to daily_monitor.py - calls Gamma API live, sends Telegram alert on resolution
+     WARNING: Web3 v3->v4 is NOT a one-line fix - full API breaking change (provider syntax, events, methods all changed)
+  -> MEMORY SYSTEM HARDENED (Mar 1 2026):
+     MEMORY.md scrubbed - removed: Composio API key, wallet addresses, Telegram ID, stale 02 balance, false monitor status
+     .gitignore updated - MEMORY.md added (can never reach GitHub)
+     git log --all -- MEMORY.md confirmed ZERO commits - key was never exposed publicly
+     Memory rules added to CLAUDE.md MEMORY SYSTEM section (see above)
+  -> GITHUB DEV BRANCH SYNCED (Mar 1 2026):
+     Commit f07f4fe pushed to origin/dev
+     Files: .gitignore, ALPHA_MEMORY.md, BUGS.md, CLAUDE.md, paper_signal_bridge.py, health_check.py
+     Workflow confirmed: dev = experiments, master = production (never commit directly to master)
+  -> SECOND CLAUDE REVIEW DONE (Mar 1 2026):
+     3 risks identified and addressed:
+     RISK 1: git log check before .gitignore - DONE (clean)
+     RISK 2: check_resolutions() must call polyclaw live not read cached JSON - incorporated into Fix-4 design
+     RISK 3: Composio API key needs rotation - added to TO-DO list (low urgency, never exposed)
+     New rule added: Alpha never writes RUNNING to status field without health check confirmation
+  -> TO-DO LIST (carry forward every session):
+     - Rotate Composio API key at composio.dev (low urgency - key never exposed publicly)
+     - Oscar exit plan: positions resolve March 15 - monitor prices, have exit strategy ready
+     - Update CLAUDE.md v17.0 after Fix-4 complete  [DONE - this is v17.0]
+  -> BUGS.md: BUG-004 and BUG-005 logged with full root cause + lessons
   -> Gap: bridge->Telegram->YES->paper_engine never triggered by real signal
   -> Plan: synthetic signal injection on US tariff market (Finance, resolves Feb 27)
   -> Architecture: Option E (test_ledger.json isolation) + Approach 2 (real Telegram with TEST label)

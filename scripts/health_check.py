@@ -85,7 +85,7 @@ def check_portfolio():
         starting = meta.get('starting_balance', 66)
         positions = d.get('open_positions', [])
         pnl_pct = ((balance - starting) / starting) * 100
-        return True, (f"💰 Balance: ${balance:.2f} | "
+        return True, (f"📄 PAPER | Balance: ${balance:.2f} | "
                       f"Positions: {len(positions)} | "
                       f"P&L: {pnl_pct:+.1f}%")
     except Exception as e:

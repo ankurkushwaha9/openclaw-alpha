@@ -12,6 +12,7 @@ gateway/
 *.token
 
 # Operational data - private
+MEMORY.md
 paper_trading/ledger.json
 paper_trading/test_ledger.json
 paper_trading/pending_proposals.json

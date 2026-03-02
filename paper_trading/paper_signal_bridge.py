@@ -63,7 +63,6 @@ CATEGORY_KEYWORDS = {
 
 def log(msg, level="INFO"):
     line = f"[{datetime.now(timezone.utc).isoformat()}] [{level}] {msg}"
-    print(line)
     with open(BRIDGE_LOG, "a") as f:
         f.write(line + "\n")
 
