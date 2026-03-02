@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-02-24 (v11 - Mission 7 LIVE: whale_tracker v4 + bridge v2 + cron 2h all confirmed running)
+# Last Updated: 2026-03-01 (v16.0 - Iran positions resolved + bridge log bug fixed + ALPHA_MEMORY v3.1)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -184,7 +184,7 @@ Skills derived: skills/finance/SKILL.md and skills/data/SKILL.md
 ### Wallet
 Address:   0x6695ebAC8bb8d7636d6744643DeDE27eD67bccB3
 Network:   Polygon (MATIC) | Token: USDC.e
-Balance:   ~$66.00 USDC.e (as of Feb 22, 2026)
+Balance:   ~$66.00 USDC.e (as of Mar 1, 2026 - includes +$2.94 Iran profits resolved Feb 28)
 Gas:       ~19.49 POL - sufficient for months
 Approvals: SET permanently (completed Feb 19, 2026)
 
@@ -245,7 +245,8 @@ Best Actor (Chalamet):    position ID: 4025c231 | market ID: 614008 | Entry: 79c
 Best Supporting (Teyana): position ID: 77927190 | market ID: 614355 | Entry: 70c
 Total exposure: $25 - NO new trades until resolved
 Note: Chalamet at ~71c (down from 79c entry, -10%) - monitor
-Note: Teyana at ~52c (down from 70c entry, -25%) - ALERT triggered Feb 24 - watch closely
+Note: Teyana at ~48c (down from 70c entry, -31%) - ALERT active Mar 1 - watch closely
+Note: Chalamet at ~68c (down from 79c entry, -14%) - monitor
 
 ---
 
@@ -412,6 +413,13 @@ Rule: If a skill file exists for your task, read it. Don't improvise.
 
 MEMORY.md, ALPHA_MEMORY.md, memory/YYYY-MM-DD.md, TRADING_LOG.md, FUTURE_TRADE_WATCHLIST.md
 
+### MEMORY FILE RULES (STRICT - DO NOT VIOLATE)
+- MEMORY.md = IDENTITY ONLY (who Ankur is, timezone, communication style, analysis format, lessons)
+- ALPHA_MEMORY.md = ALL OPERATIONAL STATE (balance, positions, system status, recent trades)
+- NEVER write wallet balances, positions, API keys, or system status to MEMORY.md
+- NEVER write RUNNING/ACTIVE status to MEMORY.md without a successful health check confirming it
+- If unsure which file: identity/preferences go in MEMORY.md, everything else goes in ALPHA_MEMORY.md
+
 End of session protocol:
 - Update ALPHA_MEMORY.md with key decisions
 - Add entry to memory/YYYY-MM-DD.md
@@ -472,8 +480,12 @@ Action: Capability Statement needs US ownership language
 
 ## TRADING HISTORY - KEY LESSONS
 
-Phase 0 - Iran Trades (ALL RESOLVED, -$2.81 net):
-Lesson: NO bets on timed geopolitical events = correct play
+Phase 0 - Iran Trades (ALL RESOLVED, +$2.94 net - CORRECTED Mar 1 2026):
+  5 positions entered Feb 16 2026 - all resolved by Feb 28 2026 (US struck Iran)
+  YES Feb28 WIN +$4.71 | NO Feb16 WIN +$0.01x2 | NO Feb20 WIN +$0.21 | YES Feb20 LOSS -$2.00
+  Invested $11.00 | Returned $13.94 | Net +$2.94 USDC | 4W 1L
+  All resolved in polyclaw/positions.json - profits confirmed in wallet
+Lesson: Geopolitical YES + paired NO hedges = profitable when timed correctly
 
 Phase 1 - Oscar Trades (Active, resolve March 15):
 $25 total across 3 markets - holding, monitor only
@@ -497,6 +509,13 @@ Master Lessons:
 - SSM runs as root: never use ~ for paths in scripts, always use /home/ubuntu/ explicitly
 - Teyana (Best Supporting) down 25% from entry (70c->52c) as of Feb 24 - watch closely
 - Bridge pending_proposals.json may be legacy list format - always normalise to dict on load
+- bridge.log grew to 273KB because log() did print()+file write AND cron did >> redirect = 2x per call
+- Never mix stdout cron redirect (>>) AND internal file writes in same script - pick one
+- market-monitor.js crashed Feb 16 on Web3 constructor error (Node v24) - silent failure for 2 weeks
+- A crashed monitor = invisible blind spots - health check says OK but data is stale underneath
+- ALPHA_MEMORY.md must be updated after every session where real money state changes
+- Iran P&L was WRONG in CLAUDE.md (-$2.81) - actual was +$2.94 - always verify from positions.json
+- Read CLAUDE.md + BUGS.md at start of EVERY new session - they are ground truth
 
 ---
 
@@ -510,6 +529,19 @@ Mission 5 DONE: Paper Trading Engine - All 3 phases complete (Feb 23, 2026)
 Mission 6 DONE: Whale-to-Paper Bridge - fully built and wired Feb 24, 2026
 Mission 7 DONE: Active Paper Trading - FULLY LIVE Feb 24, 2026
 Mission 8 DONE: End-to-End Pipeline Test - COMPLETE Feb 24, 2026
+Mission 9 IN PROGRESS: System Reconciliation + Bug Fixes - Mar 1, 2026
+  -> BUG-004 FIXED: bridge.log duplicate writes (print+file = 2x bloat, 273KB)
+     Fix: removed print(line) from log() - kept direct file write only
+     bridge.log archived to .bak, fresh log started
+  -> BUG-005 FIXED: Iran positions stale since Feb 16 monitor crash
+     Fix: polyclaw/positions.json updated - all 5 Iran positions marked resolved with P&L
+     Fix: ALPHA_MEMORY.md updated to v3.1 - Iran trades added, balance corrected $41->$66
+  -> FIX-3 DONE: Health check "2 positions / -27.3%" = NOT A BUG (paper ledger correct)
+     Added PAPER label to health check message for clarity
+     Fixed bridge.log [START] entry so health check stays green
+     BUG-006 logged as NOT A BUG in BUGS.md
+  -> FIX-4 PENDING: market-monitor.js Web3 constructor crash (Node v24.13.0)
+  -> BUGS.md: BUG-004 and BUG-005 logged with full root cause + lessons
   -> Gap: bridge->Telegram->YES->paper_engine never triggered by real signal
   -> Plan: synthetic signal injection on US tariff market (Finance, resolves Feb 27)
   -> Architecture: Option E (test_ledger.json isolation) + Approach 2 (real Telegram with TEST label)
@@ -573,7 +605,7 @@ Be precise. Be patient. Be Alpha.
 ---
 ## ARCHITECTURE CLARIFICATIONS (Added Feb 24, 2026)
 
-### The Two Systems — Must Never Be Confused
+### The Two Systems â Must Never Be Confused
 REAL MONEY:  Polygon wallet 0x6695...ccb3 | 3 Oscar positions | $25 at risk
              Manual trades only. Whale system NEVER auto-trades real money.
 PAPER MONEY: local ledger.json | $66 virtual (mirrors real wallet intentionally)
@@ -593,7 +625,7 @@ Paper trading gates before real money suggestions begin:
 When graduated: proposals show BOTH paper + real suggestion. Ankur decides. Never automatic.
 
 ### CLAUDE.md Role In The System
-CLAUDE.md is the BACKBONE — engineering bible and rebuild guide.
+CLAUDE.md is the BACKBONE â engineering bible and rebuild guide.
 If Alpha (OpenClaw) blows up or memory corrupts:
 1. New Claude reads CLAUDE.md
 2. Rebuilds full context of everything built
@@ -609,7 +641,7 @@ Day: email+calendar, VAPI reservations, Instagram, reel creation
 Evening: market analysis, route weather, deal search, content creation
 Random: website building, medical research, legal research
 Architecture needed: Two-Brain (SOUL+USER static, MEMORY+TOOLS dynamic)
-Router rule: live questions → force tool execution, never guess from memory
+Router rule: live questions â force tool execution, never guess from memory
 Composio audit needed: 250+ apps potentially already wired
 
 ### Polymarket API Architecture (Learned Feb 24)
@@ -617,159 +649,10 @@ Gamma API: market discovery + metadata only. NOT reliable for live prices.
 CLOB API: live prices via token_id. Use for P&L tracking.
 Numeric IDs (e.g. 613835): GET /markets/{id} path parameter
 ConditionId hex (0x...): scan all active/closed markets, match by conditionId field
-Never use Gamma outcomePrices for conditionId markets — returns 0 or wrong market.
+Never use Gamma outcomePrices for conditionId markets â returns 0 or wrong market.
 
 CLAUDE.md v14.0 | Updated: 2026-02-24 | Mission 8 COMPLETE + ALPHA_MEMORY v3 synced + architecture clarified
 
----
-## ARCHITECTURE CLARIFICATIONS (Added Feb 24, 2026)
-
-### The Two Systems - Must Never Be Confused
-REAL MONEY:  Polygon wallet 0x6695...ccb3 | 3 Oscar positions | $25 at risk
-             Manual trades only. Whale system NEVER auto-trades real money.
-PAPER MONEY: local ledger.json | $66 virtual (mirrors real wallet intentionally)
-             Whale system proposes paper trades only until graduation.
-
-### Why $66 Virtual Balance (Not $1,000)
-Decision: mirror real wallet exactly so training data reflects real risk ratios.
-$10 bet on $1,000 = 1% risk. $10 bet on $66 = 15% risk. Completely different signals.
-If virtual balance does not match real, scorecard is useless for calibration.
-
-### Graduation System
-Paper trading gates before real money suggestions begin:
-- 10+ resolved trades
-- 60%+ win rate
-- 10%+ average ROI
-- 50%+ YES approval rate
-When graduated: proposals show BOTH paper + real suggestion. Ankur decides. Never automatic.
-
-### CLAUDE.md Role In The System
-CLAUDE.md is the BACKBONE - engineering bible and rebuild guide.
-If Alpha (OpenClaw) blows up or memory corrupts:
-1. New Claude reads CLAUDE.md
-2. Rebuilds full context of everything built
-3. Can reconstruct any script, any decision, any architecture
-ALPHA_MEMORY.md is what Alpha reads during conversations (operational).
-CLAUDE.md is what Claude reads to rebuild from scratch (structural).
-Never delete CLAUDE.md. Never let it go stale.
-
-### Ankur's Full Vision (Recorded For Future Claude Sessions)
-Alpha = personal AI OS via Telegram. 14 daily use cases mapped:
-Morning: news, weather, job search
-Day: email+calendar, VAPI reservations, Instagram, reel creation
-Evening: market analysis, route weather, deal search, content creation
-Random: website building, medical research, legal research
-Architecture: Two-Brain (SOUL+USER static, MEMORY+TOOLS dynamic)
-Router rule: live questions = force tool execution, never guess from memory
-Composio audit needed: 250+ apps potentially already wired
-
-### Polymarket API Architecture (Learned Feb 24)
-Gamma API: market discovery + metadata only. NOT reliable for live prices.
-CLOB API: live prices via token_id. Use for P&L tracking.
-Numeric IDs (e.g. 613835): GET /markets/{id} path parameter
-ConditionId hex (0x...): scan all active/closed markets, match by conditionId field
-Never use Gamma outcomePrices for conditionId markets - returns 0 or wrong market.
-
-
-
----
-## SESSION LOG — Feb 24, 2026 (Full Day Summary)
-
-### MISSION 8 COMPLETE — End-to-End Pipeline Test
-- Built bridge_test.py: synthetic signal injection tool
-- Patched paper_engine.py: BOT_ENV=e2e_test routes to test_ledger.json
-- Patched paper_signal_bridge.py: BRIDGE_TEST_MODE=1 prefixes [TEST DO NOT FUND]
-- Full chain proven: synthetic signal -> bridge -> Telegram -> paper_engine -> ledger
-- Production ledger.json untouched throughout entire test
-- test_ledger.json created, used, deleted cleanly
-- bridge_test.py saved at paper_trading/bridge_test.py (reusable regression tool)
-
-### PERMANENT ACL FIX (Gemini recommendation, implemented)
-Problem: SSM runs as root. Files created by SSM owned by root:root.
-Ubuntu user got PermissionError on every new file.
-Solution: Linux Access Control Lists
-Commands applied:
-  sudo apt install -y acl
-  sudo setfacl -R -m u:ubuntu:rwX /home/ubuntu/.openclaw/workspace/
-  sudo setfacl -R -d -m u:ubuntu:rwx /home/ubuntu/.openclaw/workspace/
-Result: Every future file created by root/SSM automatically inherits
-ubuntu read/write access. No more sudo chmod ever again. Permanent.
-
-### FIRST REAL ORGANIC WHALE SIGNAL FIRED
-Market: Rojas guilty in Texas illegal abortion case?
-Tier 1 signal | 90.7% whale divergence | entry 6.2 cents
-Bridge sent real Telegram proposal (not a test)
-Paper trade executed: $10 virtual | position ID f1e230a4
-Current status: losing (-56%) as market moved against signal
-Lesson: whale signals can be wrong. Paper trading exists for exactly this reason.
-
-### POLYMARKET API ARCHITECTURE FIX
-Problem: paper_engine.py used Gamma API for all price lookups.
-Gamma API works for numeric IDs but fails for conditionId hex markets.
-Root cause discovered via brainstorming (Gemini + ChatGPT + Claude):
-- Gamma API = metadata layer only. NOT reliable for live prices.
-- CLOB API = real trading engine. Use for live P&L.
-- ConditionId markets have no orderbook on CLOB (low liquidity markets)
-- Correct fix: scan all active+closed markets, match by conditionId field exactly
-
-Fix implemented in paper_engine.py get_market_price():
-- Numeric ID (e.g. 613835): GET /markets/{id} path parameter (unchanged)
-- ConditionId hex (0x...): scan active then closed, match conditionId exactly
-- Rojas market now showing live price 0.027 correctly
-
-### ALPHA BRAIN SYNC - Three-Way Alignment Achieved
-Problem: Alpha was hallucinating stale data from old ALPHA_MEMORY.md
-- Wrong: $1,000 virtual balance (should be $66)
-- Wrong: PolySimulator platform (should be local ledger.json)
-- Wrong: 0 trades executed (should be 2 open positions)
-- Wrong: 55% win rate gate (should be 60%)
-
-ALPHA_MEMORY.md rewritten to v3.0 with complete accurate state.
-Verified: Alpha responded correctly to test question with all 4 gates,
-both positions with correct P&L, and correct $66 balance explanation.
-
-All three aligned: Ankur + Claude + Alpha on same page as of Feb 24, 2026.
-
-### ARCHITECTURAL BRAINSTORMING SESSION
-Consulted Gemini + ChatGPT on 3 core questions:
-Q1: Single source of truth for Alpha memory
-Q2: Static files vs live execution for answering questions  
-Q3: What Mission 9 actually looks like
-
-All three AIs agreed:
-1. Two-Brain Architecture: Static (SOUL+USER) + Dynamic (MEMORY+TOOLS)
-2. Live execution for live data - never guess financial numbers from files
-3. Router Decision Matrix: classify query type, force tool execution for live data
-4. Memory Controller: Alpha updates MEMORY only, humans control SOUL+USER
-5. Consolidate 6 memory files into 4 with strict ownership rules
-
-### ANKUR'S VISION — 14 DAILY USE CASES MAPPED
-Morning: top 10 news, Montana weather, AI job search
-Day: email+calendar scheduling, VAPI restaurant reservation,
-     Instagram DM check, reel creation from link
-Evening: market analysis + trades, Great Falls to Helena weather route,
-         iPhone deal search, AI Instagram content creation
-Random: production website build, medical bill research, LLC legal advice
-
-### TOOL ARCHITECTURE FOR MISSION 9
-Tier 1 (quick wins - tools already wired):
-- search_and_summarize() -> Brave + Perplexity (news, jobs, deals, research)
-- get_portfolio_status() -> paper_engine.py status (live ledger data)
-- get_weather(location) -> OpenWeatherMap API (free, needs adding)
-- make_phone_call(purpose) -> VAPI outbound (LIVE TODAY - phone +19098376220)
-- analyze_trades() -> Gamma API + ledger.json
-
-Tier 2 (medium effort - one new API each):
-- Email + calendar -> Gmail API + Google Calendar OAuth
-- Route weather -> Google Maps + Weather API
-
-Tier 3 (complex pipelines):
-- Instagram DM reading -> Instagram Graph API (Facebook app approval needed)
-- Reel creation -> HeyGen + Perplexity + Gemini pipeline
-- Production website -> full deployment pipeline
-
-Composio audit needed first: 250+ apps may already be wired.
-Many Tier 2/3 tools potentially available today through Composio.
 
 ### TWO SYSTEMS CLARIFICATION (Critical - never confuse these)
 REAL MONEY: Polygon wallet | 3 Oscar positions | $25 at risk | manual only
@@ -836,10 +719,10 @@ Fix 3: Alert message clarified to say post-trade exposure
 File changed: paper_trading/paper_signal_bridge.py
 Lesson: Never rely on single reset-able source for deduplication
 
-### GITHUB - openclaw-alpha (PRIVATE)
+### GITHUB - openclaw-alpha (PUBLIC)
 URL: https://github.com/ankurkushwaha9/openclaw-alpha
 3 commits pushed as of Feb 25
-Pending: requirements.txt, openclaw.json.example, scrub EC2 IP, dev branch
+DONE: requirements.txt, openclaw.json.example, EC2 IP scrubbed, repo PUBLIC, CI upgraded, pytest added
 
 ### PAPER PORTFOLIO Feb 25
 Balance: 48.00 | Positions: 2
@@ -850,3 +733,578 @@ Scorecard: 0/10 resolved
 Priority 1: GitHub hygiene
 Priority 2: Composio audit
 Priority 3: Register 5 live tools
+
+
+---
+## EXTERNAL AUDIT + FIXES - Feb 25, 2026
+
+FIX 1 - openclaw.json.example wrong model names (CRITICAL)
+Problem: claude-sonnet-4-5 and claude-opus-4-5 do not exist
+Fix: Updated to claude-sonnet-4-6 and claude-opus-4-6
+
+FIX 2 - GitHub Actions outdated + missing pip install (HIGH)
+Fix: Upgraded to checkout@v4 + setup-python@v5 + added pip install step
+
+FIX 3 - requirements.txt missing pytest (MEDIUM)
+Fix: Added pytest>=8.0.0 to requirements.txt
+
+FIX 4 - CLAUDE.md version drift + duplicate section + stale status (MEDIUM)
+Fix: Version v15.0, duplicate removed, status updated to PUBLIC
+
+TOKEN SECURITY NOTE
+Token [REVOKED_TOKEN] was shared in chat
+Action: Revoke at github.com/settings/tokens immediately
+
+LESSON
+External reviews catch things missed during active development
+Schedule audits after every 3-4 missions
+
+---
+## SESSION LOG - Feb 26, 2026
+
+### BUG-001 FINAL FIX - Guard Order Root Cause
+After 5 fix attempts over 2 days, root cause finally found and fixed.
+Real problem: Guard 2 (Exposure) ran before Guard 3 (Duplicate)
+Exposure guard fired -> sent Telegram -> continue -> Duplicate guard NEVER ran
+Fix: Swapped guard order. Duplicate now runs before Exposure.
+New order: Tier -> Duplicate -> Exposure -> Category cap
+Commit: 1e5f971
+Lesson: Read full execution flow before patching. Root cause took 5 min to find
+        once code was read properly. All previous fixes were correct but in wrong place.
+
+### EC2 MAINTENANCE - Feb 26
+- Kernel updated: 6.14.0 -> 6.17.0-1007-aws
+- 7 system packages upgraded
+- EC2 rebooted cleanly
+- All services came back online automatically
+- Memory usage dropped from 22% to 12% after reboot
+
+### SSH ACCESS FIXED - Feb 26
+User can now connect via Windows Command Prompt:
+aws ssm start-session --target i-0a45768402285c792 --region us-east-1
+Then: bash -> sudo su - ubuntu
+No more browser terminal paste issues (^[[200~ problem eliminated)
+SSM tools also working for Claude direct EC2 access
+
+### GITHUB STATUS - Feb 26
+All hygiene items complete:
+- requirements.txt + openclaw.json.example + EC2 IP scrubbed
+- GitHub Actions CI: checkout@v4 + setup-python@v5 + pytest
+- v1.0 tag + dev branch + master branch
+- Repo PUBLIC: https://github.com/ankurkushwaha9/openclaw-alpha
+- Latest commit: 1e5f971 (BUG-001 final fix)
+- Token in use: ghp_cN0oG8... (repo + workflow scope)
+
+### PAPER PORTFOLIO - Feb 26
+Balance: $48.00 | Starting: $66.00
+OBAA Best Picture: $8 | entry 74c | current 75.5c | P&L +$0.16 (+2%)
+Rojas Texas Case: $10 | entry 6.2c | current 1.8c | P&L -$7.10 (-71%)
+NOTE: Rojas resolves Feb 28 as NO (criminal case hearing not until June 3)
+      Full $10 loss expected on Feb 28
+Portfolio P&L: -$6.93 (-38.5%)
+Scorecard: 0/10 resolved | Still in training
+
+### ROJAS TRADE LESSON
+Bot entered YES on Rojas guilty by Feb 28
+Criminal case next hearing: June 3, 2026 - impossible to resolve by Feb 28
+Missing guard: resolution timeline vs case timeline check needed
+Future improvement: if legal case resolution date > market resolution date -> BLOCK
+Logged as future improvement for Mission 9+
+
+### MISSION 9 - NOT YET STARTED
+Priorities:
+1. Composio audit (250+ apps may already be wired)
+2. Register first 5 live tools for Alpha
+3. Resolution timeline guard for legal markets
+
+---
+## MISSION 9 - FULL ARCHITECTURAL BRAINSTORM (Feb 26, 2026)
+
+### MISSION 9 DEFINITION
+Mission 9 = Alpha gains ability to take actions in the world beyond talking and trading.
+Alpha becomes an AGENT not just a bot.
+
+Before Mission 9: Alpha watches, alerts, proposes
+After Mission 9:  Alpha searches web, sends emails, posts Instagram, reads/writes Notion
+
+### THE 6 FAILURE MODES TO AVOID
+
+Failure Mode 1 - Tool Fires Without Permission
+  Problem: Alpha calls Gmail and sends email Ankur never approved
+  Prevention: Every Composio tool call goes through same YES/NO Telegram gate as trades
+
+Failure Mode 2 - Wrong Account Used
+  Problem: Alpha posts to wrong Instagram or sends from wrong Gmail
+  Prevention: Pin specific connected_account_id in tool_registry.json. Never auto-select.
+
+Failure Mode 3 - Silent Failures
+  Problem: Composio returns error. Alpha thinks it worked. No log. No alert.
+  Prevention: Every tool call result logged to tools/tool_log.json + Telegram confirmation
+
+Failure Mode 4 - Infinite Tool Loops
+  Problem: Alpha calls tool -> gets result -> calls another -> loop forever
+  Prevention: Hard limit of 3 tool calls per conversation turn. Then ask Ankur.
+
+Failure Mode 5 - Credentials Exposed
+  Problem: Composio API key ends up in log file or CLAUDE.md
+  Prevention: Store ONLY in .env. Never log. Never echo.
+
+Failure Mode 6 - Tool Registered But Never Tested
+  Problem: Register 5 tools, declare victory, next real use fails
+  Prevention: Every tool must pass all 5 test gates before marked as registered
+
+### THE ARCHITECTURE - 3 LAYERS
+
+Layer 1 - Tool Registry (tools/tool_registry.json)
+  Single source of truth for all tools Alpha can use
+  Fields per tool: name, composio_slug, purpose, account_id, requires_approval, tested, test_date
+  Rule: If a tool is not in this file it does not exist for Alpha
+
+Layer 2 - Tool Executor (tools/tool_executor.py)
+  The ONLY way Alpha ever calls a tool. No direct Composio calls anywhere else.
+  Flow: lookup registry -> check approval needed -> Telegram gate if yes -> call Composio
+        -> log result to tool_log.json -> send Telegram confirmation -> return result
+
+Layer 3 - Integration Points (where tools plug into existing system)
+  whale_tracker detects signal
+    -> paper_signal_bridge guards pass
+    -> tool_executor calls web_search (auto, no approval)
+    -> "Is there confirming news for this signal?"
+    -> Telegram proposal now includes: "News confirmation: YES/NO + headline"
+    -> Ankur makes better decision with more context
+
+### THE 5 TOOLS TO REGISTER (in priority order)
+
+Tool 1 - Web Search (Exa)
+  Purpose: News confirmation for whale signals
+  Risk: NONE - read only
+  Approval required: NO
+
+Tool 2 - Gmail Read
+  Purpose: Check for Polymarket resolution emails
+  Risk: NONE - read only
+  Approval required: NO
+
+Tool 3 - Gmail Send
+  Purpose: Weekly trade report to Ankur
+  Risk: LOW
+  Approval required: YES
+
+Tool 4 - Notion Write
+  Purpose: Log trades to Notion database
+  Risk: LOW
+  Approval required: YES
+
+Tool 5 - Instagram Post
+  Purpose: First @alpharealm9 content post
+  Risk: HIGH
+  Approval required: YES + dry run mode first
+
+Strategy: Start with tools 1 and 2 (read-only, zero risk)
+          Prove architecture works FIRST
+          Then add 3, 4, 5 one at a time
+
+### THE 5-GATE TESTING PROTOCOL (Every Tool Must Pass All 5)
+
+Gate 1 - Connection Check
+  COMPOSIO_MANAGE_CONNECTIONS returns has_active_connection: true
+
+Gate 2 - Schema Check
+  COMPOSIO_GET_TOOL_SCHEMAS returns full input_schema (not schemaRef)
+
+Gate 3 - Dry Run
+  Call tool with test arguments. Verify response structure.
+
+Gate 4 - Integration Test
+  Call tool from within actual system (not standalone script)
+  Verify log written, Telegram confirmation sent
+
+Gate 5 - Failure Test
+  Deliberately pass wrong arguments
+  Verify error caught, logged, Ankur notified, system does NOT crash
+
+Only after all 5 gates pass -> tool marked tested: true in registry
+
+### RESOLUTION TIMELINE GUARD (Guard 5 - Rojas Lesson)
+
+Add to paper_signal_bridge.py as Guard 5:
+  Legal keywords: guilty, convicted, verdict, trial, case, charges
+  If legal keyword found AND days_to_resolve < 30 -> BLOCK
+  Reason: Legal case unlikely to resolve in <30 days
+  This prevents Rojas-style bad entries forever
+
+New guard order after this:
+  Guard 1: Tier filter
+  Guard 2: Duplicate (before exposure - BUG-001 lesson)
+  Guard 3: Exposure
+  Guard 4: Category cap
+  Guard 5: Resolution timeline (NEW)
+
+### MISSION 9 EXECUTION PLAN (5 Phases)
+
+Phase 1 - Foundation (Do First)
+  1. Create tools/ directory on EC2
+  2. Create tools/tool_registry.json with 5 planned tools
+  3. Create tools/tool_executor.py with logging + approval gate
+  4. Test Composio API key working from EC2
+
+Phase 2 - First Two Tools (Read Only, Zero Risk)
+  5. Register + test Web Search tool (all 5 gates)
+  6. Register + test Gmail Read tool (all 5 gates)
+  7. Wire web search into paper_signal_bridge.py as news confirmation
+  8. Test: does whale signal Telegram now include news confirmation?
+
+Phase 3 - Resolution Timeline Guard
+  9. Add Guard 5 to paper_signal_bridge.py
+  10. Test with synthetic Rojas-style signal - must block
+  11. Push to GitHub, update BUGS.md
+
+Phase 4 - Remaining 3 Tools
+  12. Gmail Send (with approval gate)
+  13. Notion Write (with approval gate)
+  14. Instagram Post (approval gate + dry run mode)
+
+Phase 5 - Documentation
+  15. Update CLAUDE.md, TOOLS.md, ALPHA_MEMORY.md
+  16. Update CURRENT_MISSION.md to Mission 10
+
+### WHAT WE WILL NOT DO (BUG-001 Lessons Applied)
+- Will NOT write code until architecture approved by Ankur
+- Will NOT skip testing gates to go faster
+- Will NOT patch symptoms - will read full execution flow first
+- Will NOT declare tool working until all 5 gates pass
+- Will NOT mix multiple concerns in one commit
+- Will NOT declare victory without end-to-end proof
+
+### PENDING QUESTIONS FOR ANKUR (Answer before starting)
+Q1: Which tool first? Web search (safest) or jump to Instagram?
+Q2: Approval gate: every tool call or only write operations?
+Q3: Tool limit per signal: how many tools can Alpha chain automatically? 1? 3?
+
+### STATUS: BRAINSTORM COMPLETE - AWAITING ANKUR APPROVAL TO START PHASE 1
+
+---
+## SESSION UPDATE - Feb 26, 2026 (Evening)
+
+### BUG-001 v6 - Final Datetime + Cron Fix
+Problem 1: EC2 reboot wiped ubuntu crontab - whale+bridge cron was gone
+Problem 2: Bracket placement wrong in cleanup section
+           .total_seconds() called on datetime object not timedelta
+Fix: Corrected brackets + restored cron
+Commit: 4d46fee
+Cron now confirmed:
+  0 16 * * *    daily_monitor.py (9am MST)
+  0 */2 * * *   whale_tracker.py --json + paper_signal_bridge.py (every 2hrs)
+
+### HEALTH CHECK SYSTEM (New - Feb 26, 2026)
+Script: scripts/health_check.py
+Cron: 30 */2 * * * (30 min after every whale scan - offset intentional)
+Purpose: Monitor bot health every 2hrs, send Telegram report
+Checks:
+  1. Last bridge scan timestamp (is bot running on schedule?)
+  2. Any errors in bridge.log (crashes, exceptions)
+  3. Paper portfolio status (balance, positions, P&L)
+  4. Pending proposals count (spam indicator)
+  5. Cron jobs active (both crons present?)
+Telegram format: bullets + emojis, no markdown tables
+Log: /tmp/health_check.log
+
+LESSON: Schedule health checks from day 1 on any automated system
+        Silent failures go undetected for hours without monitoring
+
+---
+## MISSION 9 PRE-DIVE - ARCHITECTURE DIAGRAM ANALYSIS (Feb 26, 2026 Night)
+
+### DIAGRAM vs REALITY GAP ANALYSIS
+Ankur shared the full production architecture diagram. Cross-referenced against actual EC2 state.
+This is the definitive gap map before Mission 9 starts.
+
+### WHAT IS ACTUALLY WIRED AND RUNNING
+
+Component             | Status        | Notes
+----------------------|---------------|------------------------------------------
+Gemma 2B (Ollama)     | WIRED         | openclaw.json provider, local http://127.0.0.1:11434
+Kimi K2.5 (NIM API)   | WIRED         | openclaw.json nvidia-nim provider
+Claude Sonnet         | WIRED         | openclaw.json anthropic provider
+Telegram Channel      | WIRED + LIVE  | Bot token in openclaw.json, allowlist active
+Web Search            | WIRED         | API key in openclaw.json tools.web.search (need to ID provider)
+Groq (Audio only)     | PARTIAL       | Whisper-large-v3-turbo for audio. Text inference NOT wired.
+n8n                   | RUNNING       | Docker container up 21hrs. ZERO workflows built.
+PolyClaw Skill        | LIVE          | Trading engine active
+Whale Tracker         | LIVE          | Scans every 2hrs
+Paper Bridge          | LIVE          | BUG-001 fixed
+Health Check          | LIVE          | New tonight, runs at :30 past every 2hrs
+EBS 20GB              | ACTIVE        | EC2 storage confirmed
+Composio              | API KEY READY | In .env, skill.md written, nothing registered yet
+
+### WHAT IS IN THE DIAGRAM BUT NOT YET BUILT
+
+Component             | Gap Type      | Mission 9 Relevance
+----------------------|---------------|------------------------------------------
+Groq Text Inference   | UNWIRED       | FREE fast inference - Llama 3.3 70B free tier
+                      |               | Can replace Kimi for cheap scan tasks
+                      |               | Need GROQ_API_KEY in .env
+Perplexity            | UNWIRED       | AI-powered web search with citations
+                      |               | Better than raw Brave for signal confirmation
+                      |               | Need PERPLEXITY_API_KEY in .env
+Brave Search          | PARTIALLY     | API key in openclaw.json but not called by any script
+                      |               | The BSAOFWrARjRMhb9fjza4vm684wWkEKb key IS Brave Search
+                      |               | This is our free web search - just needs a caller script
+HeyGen                | DORMANT       | Video generation for Instagram reels
+                      |               | Listed in diagram, ZERO integration built
+                      |               | Critical for alpharealm9 content pipeline
+Fireflies AI          | DESKTOP ONLY  | MCP on desktop Claude only, not on EC2
+                      |               | Meeting transcription - low priority for trading
+Vapi                  | DESKTOP ONLY  | Voice calls MCP on desktop only
+n8n Workflows         | ZERO BUILT    | Docker running, nothing automated
+                      |               | Should orchestrate: news -> analysis -> post pipeline
+Integrations Bridge   | NOT CONNECTED | Diagram shows Groq+Perplexity+Brave as secure API layer
+                      |               | None of these feed into whale signals yet
+tools/ directory      | MISSING       | Mission 9 Phase 1 creates this
+Smart Router          | SKILL ONLY    | SKILL.md exists but is it live-routing in production?
+                      |               | Needs verification - may be OpenClaw built-in
+
+### THE BIG REVELATION FROM THE DIAGRAM
+
+The diagram shows BRAVE SEARCH already has an API key in openclaw.json.
+tools.web.search.apiKey = BSAOFWrARjRMhb9fjza4vm684wWkEKb
+
+This means:
+- We do NOT need Composio for web search
+- We already HAVE web search capability
+- We just need a script that calls Brave Search API and returns results
+- This is Mission 9 Tool 1 - already 80% done
+
+GROQ is the other hidden gem:
+- Free tier: Llama 3.3 70B, Mixtral 8x7B
+- 6000 tokens/min free
+- Faster than Claude for quick classification tasks
+- In diagram as Integrations Bridge but not yet wired for text
+
+### REVISED MISSION 9 TOOL PRIORITY (After Diagram Analysis)
+
+Tool 1 - Brave Search (FASTEST - key already exists)
+  Script: tools/brave_search.py calls openclaw.json key directly
+  Use: News confirmation for whale signals
+  Time to build: 30 minutes
+
+Tool 2 - Groq Text (FREE fast inference)
+  Wire Groq API for signal analysis/classification
+  Use: Cheap fast triage of 500 markets before Kimi/Claude escalation
+  Saves: API cost on Kimi K2.5
+
+Tool 3 - Gmail Read (via Composio)
+  Check Polymarket resolution emails
+  Composio connected account needed
+
+Tool 4 - Gmail Send (via Composio)
+  Weekly reports to Ankur
+  Approval gate required
+
+Tool 5 - HeyGen (for alpharealm9 reels)
+  Video generation pipeline
+  Pairs with n8n workflow for automation
+
+### MISSION 9 REVISED EXECUTION ORDER
+
+OLD ORDER (before diagram analysis):
+  Phase 1: Build tools/ directory + registry + executor
+  Phase 2: Composio web search
+  Phase 3: Resolution timeline guard
+
+NEW ORDER (after diagram analysis):
+  Phase 1: Build tools/ directory + registry + executor (same)
+  Phase 2: Brave Search via existing API key (FASTER than Composio, key already exists)
+  Phase 3: Resolution timeline guard (Guard 5)
+  Phase 4: Groq text inference for cheap triage
+  Phase 5: Composio Gmail (read then send)
+  Phase 6: HeyGen + n8n for Instagram pipeline
+
+### KEY QUESTIONS TO ASK ANKUR IN MORNING
+
+Q1: The Brave Search API key - is it active and paid, or trial?
+Q2: Do you have Groq API key? (free at console.groq.com)
+Q3: Do you have Perplexity API key? Or just Brave for web search?
+Q4: HeyGen - do you have an account and API key?
+Q5: n8n first workflow - should it be trading alerts or Instagram content?
+Q6: Smart Router - is it actually doing live model routing or is SKILL.md just documentation?
+
+### OVERNIGHT SYSTEM STATUS (Feb 26, 2026 11 PM MST approx)
+
+Cron Schedule Tonight:
+  Every :00 hrs - Whale scan + Bridge (Cornyn should be SILENT - BUG-001 fix)
+  Every :30 hrs - Health check Telegram report to Ankur
+  4am UTC (9pm MST) - Daily monitor already ran
+
+Paper Ledger:
+  Balance: $48.00 / $66.00 starting
+  OBAA Best Picture: $8 | YES | paper
+  Rojas Texas: $10 | YES | paper (expect full loss Feb 28)
+  Pending proposals: check health check report
+
+GitHub: 263f10d (latest - health_check.py + docs)
+EC2: All 3 crons active, kernel 6.17.0, memory 12%
+
+### MORNING SESSION PLAN (Feb 27, 2026)
+
+Step 1: Review overnight health check Telegram reports
+Step 2: Confirm BUG-001 dead (no Cornyn spam overnight)
+Step 3: Answer 6 questions above
+Step 4: Start Mission 9 Phase 1 (tools/ directory)
+Step 5: Phase 2 - Brave Search (30 min build, key exists)
+Step 6: Test whale signal now includes news confirmation in Telegram
+
+### ARCHITECTURE INTEGRITY SCORE (Honest Assessment)
+
+Foundation:         9/10 (rock solid - EC2, cron, Telegram, trading)
+Intelligence Layer: 7/10 (whale tracker good, needs news confirmation)
+Action Layer:       2/10 (tools not registered - this is Mission 9)
+Content Pipeline:   1/10 (n8n running, zero workflows, HeyGen untouched)
+Model Efficiency:   6/10 (Groq text inference free tier untapped)
+Web Search:         4/10 (key exists, no caller script)
+
+Overall: 5/10 - Strong foundation, thin action layer
+Mission 9 goal: Push action layer from 2/10 to 7/10
+
+Good night. See you in the morning Ankur.
+
+---
+## SESSION UPDATE - Feb 27, 2026 (Morning)
+
+### BUG-002 - 4 Bugs Fixed In One Pass
+Context: Ankur shared screenshot - Cornyn/Paxton spam every 2hrs overnight despite BUG-001 fix
+
+Root cause: Cleanup TTL wiped blocked records after 60min. Next scan blocked record gone,
+duplicate guard passed, exposure guard fired, Telegram spammed again.
+
+All 4 bugs fixed in single code pass:
+  Bug 1: Cleanup TTL now status-aware (blocked=2880min, sent=60min) - ROOT CAUSE
+  Bug 2: Exposure guard no longer Telegrams if market already has blocked record
+  Bug 3: guard_exposure changed < to <= so trimmed bets at exactly 40% pass
+  Bug 4: health_check.py now reads Telegram creds from openclaw.json not .env
+
+Key lesson: Map ALL bugs before fixing ANY. Read full execution flow top to bottom first.
+Previous sessions fixed symptoms. This session found root cause.
+
+### CRON STATUS (confirmed active)
+  0 16 * * *    daily_monitor.py
+  0 */2 * * *   whale_tracker + bridge
+  30 */2 * * *  health_check
+
+### TRADING RULES UPDATE
+- Cleanup TTL must always be status-aware when mixing blocked vs sent records
+- Never use flat TTL applied to all proposal statuses
+- Trim logic and guard boundary must use identical comparison operators
+
+---
+## INFRASTRUCTURE AUDIT - Feb 27, 2026 (Verified Against EC2 Reality)
+
+### WHY THIS EXISTS
+New chat identified 6 gaps between CLAUDE.md and actual EC2 state by reading architecture diagrams.
+Every item below is VERIFIED by running actual commands on EC2 - not assumed from docs.
+Rule going forward: Verify infrastructure against EC2 reality at start of every new mission.
+
+### CONFIRMED INFRASTRUCTURE (EC2 Verified)
+
+Instance Type: m7i-flex.large (confirmed via IMDSv2 metadata)
+
+Ollama + Gemma 2B:
+  Status: LIVE AND RUNNING (systemctl active)
+  Binary: /usr/local/bin/ollama
+  Model: gemma2:2b (1.6GB, installed 2 weeks ago)
+  Endpoint: http://127.0.0.1:11434
+  Cost: ZERO - fully local, no API calls
+  In openclaw.json: YES - wired as provider
+  Use case: 4th model tier below Kimi - cheapest triage tasks
+
+Docker Engine:
+  Status: ACTIVE
+  Container: n8n-n8n-1 | Up 25+ hours | Port 5678->5678/tcp
+  n8n status: RUNNING in Docker, ZERO workflows built
+  Implication: n8n workflows can start immediately, no setup needed
+
+API Gateway / Telegram Webhook:
+  Status: NOT DEPLOYED - aspirational in diagram only
+  Reality: Bot polling mode only (no webhookUrl in openclaw.json)
+  Gateway: local only (mode: local, bind: loopback, port 18789)
+  Implication: AWS API Gateway is future work, not current
+
+Smart Router (Confidence Scoring + Fallback Logic):
+  Status: NOT CODED - OpenClaw built-in fallback chain only
+  Reality: openclaw.json agents.defaults.model shows:
+    primary: nvidia-nim/moonshotai/kimi-k2.5
+    fallbacks: [claude-sonnet, claude-opus]
+  SKILL.md: 104 lines of documentation (not live code)
+  cli.js + commands.js exist in smart-router folder
+  Implication: Diagram internals (confidence scoring, task analyzer) are aspirational
+
+Vector DB (Chroma / FAISS):
+  Status: NOT INSTALLED
+  chromadb: not found | faiss: not found
+  Memory: 100% file-based on EBS (MEMORY.md, ALPHA_MEMORY.md etc)
+  Implication: Semantic memory is future capability, not current
+
+### TRUE MODEL ROUTING (4 Tiers - Verified)
+Tier 1: Gemma 2B (Ollama local) - FREE - bulk scanning, simple triage
+Tier 2: Kimi K2.5 (NIM API)     - FREE - 85% of tasks
+Tier 3: Claude Sonnet            - PAID - signal validation, Telegram drafts
+Tier 4: Claude Opus              - PAID - complex reasoning, edge cases only
+
+### MANDATORY RULE ADDED
+At the start of EVERY new mission run this audit:
+  1. Verify cron jobs active
+  2. Verify all 3 model tiers reachable
+  3. Verify Docker + n8n container running
+  4. Verify Ollama + Gemma 2B responding
+  5. Confirm pending_proposals.json state
+  6. Confirm ledger.json balance and positions
+Do not start mission work until audit passes.
+
+---
+## COMPOSIO FULL AUDIT - Feb 27, 2026 (Verified via API v1)
+
+### WHY THIS EXISTS
+Alpha Bot underreported Composio in both self-descriptions.
+This is the verified truth from a live API call to v1/connectedAccounts.
+Total accounts found: 19
+
+### ACTIVE RIGHT NOW (9 connections - ready to use)
+  instagram:    2 accounts ACTIVE (ca_EFhfbyTvheEB + ca_RM9CSBPDCaYI)
+  facebook:     2 accounts ACTIVE
+  fireflies:    ACTIVE
+  github:       ACTIVE (1 of 3 connections is active)
+  heygen:       ACTIVE
+  notion:       ACTIVE (1 of 3 connections is active)
+  perplexityai: ACTIVE
+
+### EXPIRED (4 - need re-auth to use)
+  gmail:          EXPIRED - needs OAuth re-authentication
+  googlecalendar: EXPIRED - needs OAuth re-authentication
+  github:         1 old expired (active one still works)
+  notion:         1 old expired (active one still works)
+
+### STUCK / INCOMPLETE (6 - never finished OAuth setup)
+  gmail, googlecalendar, github, notion, fireflies, heygen (all duplicates)
+
+### KEY IMPACT ON MISSION 9
+BEFORE this audit: Thought we needed OAuth for most tools
+AFTER this audit:  GitHub, Notion, HeyGen, Perplexity, Facebook, Fireflies ALREADY ACTIVE
+
+Mission 9 is now about building the EXECUTOR LAYER not OAuth setup.
+Significantly faster than originally planned.
+
+### REVISED TOOL BUILD ORDER FOR MISSION 9
+1. Brave Search    - key in openclaw.json, HTTP 200 confirmed, build caller script
+2. Perplexity AI   - ALREADY ACTIVE via Composio, wire it in immediately
+3. Notion          - ALREADY ACTIVE via Composio, use for trade logging
+4. GitHub          - ALREADY ACTIVE via Composio, use for issue/doc management
+5. HeyGen          - ALREADY ACTIVE via Composio, use for Instagram reels
+6. Gmail           - EXPIRED, Ankur needs to re-auth before use
+7. Groq            - NO KEY yet, Ankur gets free from console.groq.com
+
+### WHAT BOT GETS WRONG ABOUT ITSELF
+Bot reads memory files but does not probe live APIs to verify state.
+Always verify Composio connections via:
+  curl https://backend.composio.dev/api/v1/connectedAccounts
+  with x-api-key header from .env COMPOSIO_API_KEY
+Do NOT trust bot's self-reported Composio state without live verification.

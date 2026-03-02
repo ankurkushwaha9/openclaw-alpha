@@ -1,5 +1,5 @@
 # ALPHA_MEMORY.md — Ankur's AI Alpha Working Memory
-# Version: 3.0 | Updated: 2026-02-24
+# Version: 3.1 | Updated: 2026-03-01
 # READ THIS FIRST — This is Alpha's source of truth for all conversations
 
 ---
@@ -23,9 +23,19 @@ Alpha runs TWO completely separate trading systems in parallel:
 - Network: Polygon
 - These are REAL USDC trades Ankur placed manually
 - Whale system does NOT auto-trade real money — ever
-- Current balance: ~$41 USDC remaining
+- Current balance: ~$66 USDC (includes +$2.94 Iran profits resolved Feb 28)
 
-Active real positions (resolve March 15, 2026 — Oscars):
+## IRAN TRADES — RESOLVED FEB 28 2026 (Real Money)
+Entry date: 2026-02-16 | Resolution: 2026-02-28 | Event: US struck Iran
+- US strikes Iran by Feb 28 YES: $1.00 @ 0.175 | payout $5.71 | profit +$4.71 WIN
+- US strikes Iran by Feb 16 NO: $3.00 @ 0.9955 | payout $3.01 | profit +$0.01 WIN
+- US strikes Iran by Feb 20 NO: $3.00 @ 0.935  | payout $3.21 | profit +$0.21 WIN
+- US strikes Iran by Feb 20 YES: $2.00 @ 0.065 | payout $0.00 | profit -$2.00 LOSS
+- US strikes Iran by Feb 16 NO: $2.00 @ 0.9955 | payout $2.01 | profit +$0.01 WIN
+IRAN NET: Invested $11.00 | Returned $13.94 | Profit +$2.94 USDC | 4W 1L
+All resolved - profits in wallet. polyclaw/positions.json updated.
+
+Active real positions (resolve March 15, 2026 - Oscars):
 - OBAA Best Picture:      $10 real | entry 74c | current ~75c | P&L ~+$0.16
 - Chalamet Best Actor:    $8 real  | entry 79c | current ~77c | P&L ~-$1.84
 - Teyana Best Supporting: $7 real  | entry 70c | current ~69c | P&L ~-$2.17
