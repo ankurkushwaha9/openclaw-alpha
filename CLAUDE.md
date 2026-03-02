@@ -420,6 +420,14 @@ MEMORY.md, ALPHA_MEMORY.md, memory/YYYY-MM-DD.md, TRADING_LOG.md, FUTURE_TRADE_W
 - NEVER write RUNNING/ACTIVE status to MEMORY.md without a successful health check confirming it
 - If unsure which file: identity/preferences go in MEMORY.md, everything else goes in ALPHA_MEMORY.md
 
+### LIVE DATA RULES (STRICT - DO NOT VIOLATE)
+- NEVER answer questions about balance, positions, P&L, or trade history from memory
+- ALWAYS run: python3 /home/ubuntu/.openclaw/workspace/scripts/daily_monitor.py for live data
+- NEVER report a position as DISPUTED, PENDING, or OPEN if positions.json shows it resolved
+- NEVER self-generate portfolio tables from memory - always read from source files
+- Source of truth order: positions.json > ALPHA_MEMORY.md > memory (memory is last resort never first)
+- If script fails to run - say "I cannot get live data right now" not guess from memory
+
 End of session protocol:
 - Update ALPHA_MEMORY.md with key decisions
 - Add entry to memory/YYYY-MM-DD.md
