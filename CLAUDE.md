@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-01 (v16.0 - Iran positions resolved + bridge log bug fixed + ALPHA_MEMORY v3.1)
+# Last Updated: 2026-03-02 (v17.0 - Fix-4 COMPLETE + dev->master merged + fully synced)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -540,7 +540,31 @@ Mission 9 IN PROGRESS: System Reconciliation + Bug Fixes - Mar 1, 2026
      Added PAPER label to health check message for clarity
      Fixed bridge.log [START] entry so health check stays green
      BUG-006 logged as NOT A BUG in BUGS.md
-  -> FIX-4 PENDING: market-monitor.js Web3 constructor crash (Node v24.13.0)
+  -> FIX-4 COMPLETE (Mar 2 2026): check_resolutions() added to daily_monitor.py
+  -> MARKET-MONITOR.JS ANALYSIS COMPLETE (Mar 1 2026):
+     ROOT CAUSE: Web3 v3 syntax used (const Web3 = require) but v4.16.0 installed (needs destructure)
+     DECISION: RETIRE market-monitor.js - orphan script, no cron, no integration, scans opportunities NOT resolutions
+     FIX-4 DONE: check_resolutions() added to daily_monitor.py - calls Gamma API live, sends Telegram alert on resolution
+     WARNING: Web3 v3->v4 is NOT a one-line fix - full API breaking change (provider syntax, events, methods all changed)
+  -> MEMORY SYSTEM HARDENED (Mar 1 2026):
+     MEMORY.md scrubbed - removed: Composio API key, wallet addresses, Telegram ID, stale 02 balance, false monitor status
+     .gitignore updated - MEMORY.md added (can never reach GitHub)
+     git log --all -- MEMORY.md confirmed ZERO commits - key was never exposed publicly
+     Memory rules added to CLAUDE.md MEMORY SYSTEM section (see above)
+  -> GITHUB DEV BRANCH SYNCED (Mar 1 2026):
+     Commit f07f4fe pushed to origin/dev
+     Files: .gitignore, ALPHA_MEMORY.md, BUGS.md, CLAUDE.md, paper_signal_bridge.py, health_check.py
+     Workflow confirmed: dev = experiments, master = production (never commit directly to master)
+  -> SECOND CLAUDE REVIEW DONE (Mar 1 2026):
+     3 risks identified and addressed:
+     RISK 1: git log check before .gitignore - DONE (clean)
+     RISK 2: check_resolutions() must call polyclaw live not read cached JSON - incorporated into Fix-4 design
+     RISK 3: Composio API key needs rotation - added to TO-DO list (low urgency, never exposed)
+     New rule added: Alpha never writes RUNNING to status field without health check confirmation
+  -> TO-DO LIST (carry forward every session):
+     - Rotate Composio API key at composio.dev (low urgency - key never exposed publicly)
+     - Oscar exit plan: positions resolve March 15 - monitor prices, have exit strategy ready
+     - Update CLAUDE.md v17.0 after Fix-4 complete  [DONE - this is v17.0]
   -> BUGS.md: BUG-004 and BUG-005 logged with full root cause + lessons
   -> Gap: bridge->Telegram->YES->paper_engine never triggered by real signal
   -> Plan: synthetic signal injection on US tariff market (Finance, resolves Feb 27)
