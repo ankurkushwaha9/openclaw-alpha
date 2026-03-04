@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-02 (v17.0 - Fix-4 COMPLETE + dev->master merged + fully synced)
+# Last Updated: 2026-03-03 (v18.0 - YES/NO loop fixed + health check improved + Rojas removed)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -561,6 +561,19 @@ Mission 9 IN PROGRESS: System Reconciliation + Bug Fixes - Mar 1, 2026
      RISK 2: check_resolutions() must call polyclaw live not read cached JSON - incorporated into Fix-4 design
      RISK 3: Composio API key needs rotation - added to TO-DO list (low urgency, never exposed)
      New rule added: Alpha never writes RUNNING to status field without health check confirmation
+  -> BUG-007 FIXED (Mar 3 2026): YES/NO loop was never wired
+     ROOT CAUSE: paper_signal_bridge.py was sending Telegram message and exiting
+     Nobody was listening for YES/NO replies - paper_propose.py was never called
+     FIX: bridge now calls paper_propose.py via subprocess - full loop working
+     paper_propose.py sends proposal + polls for reply + executes trade if YES
+  -> Rojas Texas Abortion Case removed from ledger.json (Mar 3 2026)
+     Was e2e test leak from Feb 24 - hex market ID Gamma API could never price
+     Was blocking ALL new trades (exposure 42.1% > 40% cap)
+     Cash refunded: 8 -> 8 virtual
+  -> Health check improved (Mar 3 2026)
+     Added check_yes_no_loop() - verifies bridge calls paper_propose.py
+     Will now catch if YES/NO loop breaks again
+     Old health check said ALL SYSTEMS OK while core feature was broken
   -> TO-DO LIST (carry forward every session):
      - Rotate Composio API key at composio.dev (low urgency - key never exposed publicly)
      - Oscar exit plan: positions resolve March 15 - monitor prices, have exit strategy ready
