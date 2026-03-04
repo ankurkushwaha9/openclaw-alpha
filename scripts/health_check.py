@@ -131,6 +131,31 @@ def check_cron():
     except Exception as e:
         return False, f"❌ Cannot check cron: {e}"
 
+
+def check_yes_no_loop():
+    """Is paper_propose.py actually wired into the bridge? Core YES/NO loop check."""
+    try:
+        bridge_path = WORKSPACE / "paper_trading" / "paper_signal_bridge.py"
+        propose_path = WORKSPACE / "paper_trading" / "paper_propose.py"
+
+        if not bridge_path.exists():
+            return False, "❌ paper_signal_bridge.py missing"
+        if not propose_path.exists():
+            return False, "❌ paper_propose.py missing"
+
+        with open(bridge_path) as f:
+            bridge_code = f.read()
+
+        # Check that bridge actually calls paper_propose.py
+        if "paper_propose.py" not in bridge_code:
+            return False, "❌ YES/NO loop BROKEN - bridge not calling paper_propose.py"
+        if "subprocess.run" not in bridge_code:
+            return False, "❌ YES/NO loop BROKEN - no subprocess call in bridge"
+
+        return True, "✅ YES/NO loop wired (bridge -> paper_propose.py)"
+    except Exception as e:
+        return False, f"❌ Cannot verify YES/NO loop: {e}"
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def run_health_check():
@@ -142,6 +167,7 @@ def run_health_check():
         check_errors(),
         check_portfolio(),
         check_spam(),
+        check_yes_no_loop(),
     ]
     
     all_ok = all(ok for ok, _ in checks)
