@@ -19,6 +19,7 @@ Run: python paper_trading/paper_signal_bridge.py
 import json
 import sys
 import os
+import subprocess
 import requests
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -30,6 +31,8 @@ LEDGER_FILE  = WORKSPACE / "paper_trading" / "ledger.json"
 PENDING_FILE = WORKSPACE / "paper_trading" / "pending_proposals.json"
 BOT_CONFIG   = Path("/home/ubuntu/.openclaw/openclaw.json")
 BRIDGE_LOG   = WORKSPACE / "paper_trading" / "bridge.log"
+PROPOSE_SCRIPT = WORKSPACE / "paper_trading" / "paper_propose.py"
+VENV_PYTHON    = WORKSPACE / "skills/polyclaw/.venv/bin/python"
 
 # --- Risk constants -----------------------------------------------------------
 MAX_EXPOSURE_PCT  = 0.40   # 40% of portfolio max deployed at any time
@@ -495,13 +498,48 @@ def run_bridge(dry_run=False):
             )
             continue
 
-        # --- All 4 guards passed — build and send proposal ---
-        proposal_msg = build_proposal(
-            signal, category, amount, sizing_rationale,
-            exposure_after, cat_exposure, total_portfolio
-        )
+        # --- All 4 guards passed - call paper_propose.py (sends + waits for YES/NO + executes) ---
+        side = "YES" if signal["direction"] in ("BUY", "YES") else "NO"
+        whale_pct = round(signal.get("divergence", 0) * 100, 1)
 
-        sent = send_telegram(proposal_msg, dry_run)
+        log(f"Calling paper_propose.py for: {market_name[:50]}", "PROPOSAL")
+
+        if dry_run:
+            log(f"DRY RUN - would call paper_propose.py propose {market_id} {side} {amount} {signal['yes_price']} {tier} {whale_pct} {market_name}", "DRY")
+            sent = True
+        else:
+            cmd = [
+                str(VENV_PYTHON),
+                str(PROPOSE_SCRIPT),
+                "propose",
+                market_id,
+                side,
+                str(amount),
+                str(signal["yes_price"]),
+                str(tier),
+                str(whale_pct),
+                market_name
+            ]
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    cwd=str(WORKSPACE),
+                    timeout=2100  # 35 min (30 min proposal + 5 min buffer)
+                )
+                log(f"paper_propose output: {result.stdout.strip()[:200]}", "PROPOSAL")
+                if result.returncode == 0:
+                    sent = True
+                else:
+                    log(f"paper_propose error: {result.stderr.strip()[:200]}", "ERROR")
+                    sent = False
+            except subprocess.TimeoutExpired:
+                log(f"paper_propose timed out after 35min for: {market_name}", "WARN")
+                sent = False
+            except Exception as e:
+                log(f"paper_propose exception: {e}", "ERROR")
+                sent = False
 
         if sent:
             # CRITICAL: Mark sent IMMEDIATELY (Phase 2 loop bug lesson applied)
@@ -510,7 +548,7 @@ def run_bridge(dry_run=False):
                 "market_name":    market_name,
                 "category":       category,
                 "tier":           tier,
-                "side":           "YES" if signal["direction"] in ("BUY", "YES") else "NO",
+                "side":           side,
                 "entry_price":    signal["yes_price"],
                 "amount":         amount,
                 "divergence":     signal["divergence"],
@@ -521,14 +559,12 @@ def run_bridge(dry_run=False):
             }
             pending["proposals"].append(proposal_record)
             pending = increment_daily_cap(pending)
-
-            if not dry_run:
-                save_pending(pending)
-                log(f"Proposal + daily cap written to pending_proposals.json")
+            save_pending(pending)
+            log(f"Proposal + daily cap written to pending_proposals.json")
 
             proposals_sent += 1
             _, sent_today_now = check_daily_cap(pending)
-            log(f"Proposal sent ({sent_today_now}/{MAX_PROPOSALS_DAY} today): {market_name[:50]}", "PROPOSAL")
+            log(f"Proposal complete ({sent_today_now}/{MAX_PROPOSALS_DAY} today): {market_name[:50]}", "PROPOSAL")
 
     log(f"Bridge complete — {proposals_sent} new proposal(s) sent this run")
 
