@@ -41,7 +41,8 @@ MAX_BET           = 10.00  # hard cap per trade
 MIN_BET           = 3.00   # floor per trade
 KELLY_FRACTION    = 0.25   # conservative: use 25% of full Kelly
 PROPOSAL_TTL_MINS = 30     # proposals expire after 30 min
-MAX_PROPOSALS_DAY = 5      # daily cap — max Telegram proposals per UTC day
+DUPLICATE_BLOCK_HOURS = 24  # same market blocked for 24h after any proposal
+MAX_PROPOSALS_DAY = 10     # daily cap — max Telegram proposals per UTC day
 
 # --- Category keyword map (unchanged from v1) ---------------------------------
 CATEGORY_KEYWORDS = {
@@ -286,16 +287,20 @@ def guard_exposure(ledger: dict, amount: float, total_portfolio: float) -> tuple
 
 
 def guard_duplicate(ledger: dict, pending: dict, market_id: str) -> tuple[bool, str]:
+    # Block if already have open position in this market
     for pos in ledger["open_positions"]:
         if pos["market_id"] == market_id:
-            return False, f"Already open in {market_id[:16]}..."
+            return False, "Already have open position in this market"
+    # Block if ANY proposal for this market within last 24h (any status)
+    # Prevents same market looping every 2h regardless of YES/NO/timeout outcome
     now = datetime.now(timezone.utc)
     for prop in pending.get("proposals", []):
-        if prop.get("market_id") == market_id and prop.get("status") == "sent":
+        if prop.get("market_id") == market_id:
             age_mins = (now - datetime.fromisoformat(prop["sent_at"])).total_seconds() / 60
-            if age_mins < PROPOSAL_TTL_MINS:
-                return False, f"Proposal sent {age_mins:.0f}min ago (TTL {PROPOSAL_TTL_MINS}min)"
-    return True, "Market is fresh — no duplicate"
+            if age_mins < DUPLICATE_BLOCK_HOURS * 60:
+                status = prop.get("status", "unknown")
+                return False, f"Market seen {age_mins:.0f}min ago (status={status}) - 24h block active"
+    return True, "Market is fresh - no duplicate"
 
 
 def guard_category(cat_exposure: dict, category: str,
@@ -529,7 +534,19 @@ def run_bridge(dry_run=False):
                 sent = False
 
         if sent:
-            # CRITICAL: Mark sent IMMEDIATELY (Phase 2 loop bug lesson applied)
+            # Determine final status from paper_propose stdout output
+            propose_out = result.stdout if (not dry_run and "result" in dir()) else ""
+            if "[YES received]" in propose_out:
+                final_status = "approved"
+            elif "[NO received]" in propose_out:
+                final_status = "rejected"
+            elif "[TIMEOUT]" in propose_out:
+                final_status = "expired"
+            else:
+                final_status = "expired"  # safe default: blocks duplicate for 24h
+
+            log(f"Proposal outcome: {final_status}", "PROPOSAL")
+
             proposal_record = {
                 "market_id":      market_id,
                 "market_name":    market_name,
@@ -541,7 +558,7 @@ def run_bridge(dry_run=False):
                 "divergence":     signal["divergence"],
                 "days_to_resolve": days_left,
                 "end_date_iso":   signal.get("end_date_iso", ""),
-                "status":         "sent",
+                "status":         final_status,
                 "sent_at":        datetime.now(timezone.utc).isoformat(),
             }
             pending["proposals"].append(proposal_record)

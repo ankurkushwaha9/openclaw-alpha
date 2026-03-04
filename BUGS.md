@@ -360,3 +360,191 @@ Self-heals automatically. Fix: copy tail of bridge.log.bak to bridge.log.
 LESSON:
 Always label which system (PAPER vs REAL) in health check messages.
 Two parallel systems with similar numbers will always cause confusion without labels.
+
+---
+
+## BUG-007 | YES/NO Loop Never Wired — Paper Trades Never Executed
+Date: 2026-03-03
+Status: FIXED
+Severity: CRITICAL
+Affected: paper_trading/paper_signal_bridge.py
+
+SYMPTOM:
+Proposals sent to Telegram with "Reply YES to execute paper trade"
+User replies YES or NO but nothing happens.
+Ledger never updates. Scorecard stays 0/10.
+
+ROOT CAUSE:
+paper_signal_bridge.py was sending Telegram message via send_telegram() then immediately exiting.
+Nobody was listening for the YES/NO reply.
+paper_propose.py (which polls for reply + executes trade) was NEVER called by the bridge.
+The YES/NO instruction in the Telegram message was a dead end from day one.
+
+FIX APPLIED:
+Replaced send_telegram(proposal_msg) in bridge with subprocess call to paper_propose.py
+paper_propose.py sends proposal + waits 30min for reply + executes trade if YES
+
+FILES CHANGED:
+- paper_trading/paper_signal_bridge.py
+
+IMPACT:
+Every paper trade proposed since Feb 23 was never executable by user.
+All proposals expired silently. Scorecard stuck at 0/10.
+2 weeks of paper trading data lost.
+
+LESSON:
+End-to-end testing is mandatory. Sending a message is not the same as completing a workflow.
+Health check must verify the FULL loop, not just individual components.
+
+---
+
+## BUG-008 | Rojas Position Leaked From E2E Test Into Production Ledger
+Date: 2026-03-03
+Status: FIXED
+Severity: HIGH
+Affected: paper_trading/ledger.json
+
+SYMPTOM:
+Rojas Texas Abortion Case ($10) appeared in production ledger.json
+Gamma API showed "price unavailable" for this position every daily report
+Paper balance showed $48 instead of $58
+
+ROOT CAUSE:
+E2E test on Feb 24 was supposed to write to test_ledger.json (BOT_ENV=e2e_test)
+But Rojas position leaked into production ledger.json
+Market ID was hex format (0x3061...) — Gamma API requires numeric IDs
+Position could never be priced or resolved
+
+CASCADING EFFECT:
+$10 dead position eating 15% exposure capacity permanently
+Any new $10 trade pushed exposure to 42.1% > 40% cap
+ALL new signals blocked by exposure guard
+Paper trading system completely frozen for 7+ days
+
+FIX APPLIED:
+Removed Rojas from ledger.json
+Refunded $10 virtual to cash: $48 -> $58
+
+FILES CHANGED:
+- paper_trading/ledger.json
+
+LESSON:
+E2E tests must use strict isolation. BOT_ENV check must be enforced at write time in paper_engine.py.
+Any position with hex market ID should be rejected at entry — add validation.
+
+---
+
+## BUG-009 | Health Check Reported ALL SYSTEMS OK While Core Feature Was Broken
+Date: 2026-03-03
+Status: FIXED
+Severity: HIGH
+Affected: scripts/health_check.py
+
+SYMPTOM:
+Health check showed ALL SYSTEMS OK for 7+ days
+Meanwhile YES/NO loop was completely broken (BUG-007)
+And Rojas was freezing all new trades (BUG-008)
+
+ROOT CAUSE:
+Health check verified: crons active, no log errors, Telegram reachable, no spam
+But NEVER verified: whether paper_propose.py was actually called by bridge
+"No errors in bridge.log" is not the same as "system working correctly"
+Bridge was running perfectly and logging cleanly — while core feature was silently broken
+
+FIX APPLIED:
+Added check_yes_no_loop() to health check
+Verifies bridge.py contains subprocess call to paper_propose.py
+Will now explicitly fail and alert if YES/NO loop breaks again
+
+FILES CHANGED:
+- scripts/health_check.py
+
+LESSON:
+Health checks must verify OUTCOMES not just ACTIVITY.
+"Script ran without errors" != "Script did what it was supposed to do"
+Every critical workflow path needs its own health check verification.
+
+---
+
+## BUG-010 | Health Check WORKSPACE Variable Not Defined
+Date: 2026-03-04
+Status: FIXED
+Severity: MEDIUM
+Affected: scripts/health_check.py
+
+SYMPTOM:
+Health check showing ISSUES DETECTED every 30 mins:
+"Cannot verify YES/NO loop: name WORKSPACE is not defined"
+
+ROOT CAUSE:
+check_yes_no_loop() used WORKSPACE variable
+But health_check.py defines its path variable as BASE not WORKSPACE
+Copy-paste error when writing the new check function
+
+FIX APPLIED:
+Changed WORKSPACE -> BASE in check_yes_no_loop()
+
+FILES CHANGED:
+- scripts/health_check.py
+
+LESSON:
+When adding new functions to existing files always check what variable names
+that file uses for common paths. Do not assume same names as other files.
+
+---
+
+## BUG-011 | Duplicate Guard Not Preventing Same Market Repeated Every 2 Hours
+Date: 2026-03-04
+Status: FIXED
+Severity: HIGH
+Affected: paper_trading/paper_signal_bridge.py
+
+SYMPTOM:
+Same market (PH Colombian election) proposed 5 times in one day
+Every 2 hour scan sends same proposal to Telegram
+Daily cap of 5 hit entirely by one market
+All 5 slots wasted — no other signals can get through
+User never gets YES/NO prompt for new/different signals
+
+ROOT CAUSE:
+guard_duplicate() checks pending_proposals.json for status="sent" within TTL (30 min)
+After paper_propose.py runs (30min wait), proposal status stays "sent" in pending
+But when paper_propose.py is called via subprocess:
+  - It sends proposal and waits 30 min
+  - After timeout/expire, bridge marks it "sent" and moves on
+  - Next scan 2 hours later: proposal is now 2+ hours old > 30min TTL
+  - guard_duplicate() sees it as "expired" — PASSES duplicate check
+  - Same market proposed again
+
+CASCADING EFFECT:
+5/5 daily cap consumed by same market every day
+No other signals reach user
+Paper trading scorecard cannot progress
+System appears to be working (proposals sent) but user gets spammed with same market
+
+FIX NEEDED:
+1. After paper_propose.py completes (YES/NO/timeout), update proposal status:
+   - YES -> "approved"
+   - NO -> "rejected"  
+   - timeout -> "expired"
+2. guard_duplicate() must block markets with status "expired" or "rejected" for 24 hours
+   Not just "sent" within 30min TTL
+3. Raise daily cap from 5 to 10 temporarily during testing phase
+
+FILES TO CHANGE:
+- paper_trading/paper_signal_bridge.py (guard_duplicate TTL + status update)
+- BUGS.md (this entry)
+
+FIX APPLIED (Mar 04 2026):
+1. Added DUPLICATE_BLOCK_HOURS = 24 constant
+2. guard_duplicate now blocks ANY proposal status (sent/expired/rejected/approved) for 24h
+3. Proposal status now correctly recorded as approved/rejected/expired from paper_propose stdout
+4. Daily cap raised from 5 to 10 for testing phase
+5. Cleared stale PH Colombian market from pending_proposals.json
+6. Logic unit tested - all 3 test cases pass
+
+IMPACT OF FIX:
+- Same market will never repeat within 24 hours regardless of outcome
+- Daily cap slots reserved for different markets/signals
+- User will see diverse signals in Telegram not same market repeated
+- BUG-012 and BUG-013 resolved as part of same fix
