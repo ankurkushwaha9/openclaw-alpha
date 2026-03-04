@@ -135,8 +135,8 @@ def check_cron():
 def check_yes_no_loop():
     """Is paper_propose.py actually wired into the bridge? Core YES/NO loop check."""
     try:
-        bridge_path = WORKSPACE / "paper_trading" / "paper_signal_bridge.py"
-        propose_path = WORKSPACE / "paper_trading" / "paper_propose.py"
+        bridge_path = BASE / "paper_trading" / "paper_signal_bridge.py"
+        propose_path = BASE / "paper_trading" / "paper_propose.py"
 
         if not bridge_path.exists():
             return False, "❌ paper_signal_bridge.py missing"
