@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-03 (v19.0 - Full audit + paper auto-resolve + stale proposals cleaned + git workflow fixed)
+# Last Updated: 2026-03-04 (v20.0 - BUG-011/012/013 fixed: duplicate guard 24h + status tracking + daily cap raised)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -582,6 +582,26 @@ Mission 9 IN PROGRESS: System Reconciliation + Bug Fixes - Mar 1, 2026
      Checks open paper positions against Gamma API daily at 9am
      Auto-calls paper_engine.py resolve on March 15 when Oscars resolve
      Sends Telegram alert with virtual P&L and scorecard update
+  -> BUG-011/012/013 FIXED (Mar 04 2026): Duplicate guard broken - same market repeated every 2h
+     ROOT CAUSE: guard_duplicate only blocked status=sent within 30min TTL
+     After 30min timeout, proposal age exceeded TTL, guard PASSED same market again
+     Every 2h scan: same market proposed → 5 daily slots burned on one market → no new signals
+     FIX 1: Added DUPLICATE_BLOCK_HOURS=24 - any proposal blocks market for 24h regardless of status
+     FIX 2: Proposal status now correctly recorded: approved/rejected/expired from paper_propose stdout
+     FIX 3: Daily cap raised from 5 to 10 for testing phase
+     FIX 4: Cleared stale PH Colombian market from pending_proposals.json
+     ARCHITECTURAL LESSON: Status lifecycle must be complete end-to-end
+       sent → approved/rejected/expired (not stuck at sent forever)
+  -> BUG-011/012/013 FIXED (Mar 04 2026): Duplicate guard broken - same market repeated every 2h
+     ROOT CAUSE: guard_duplicate only blocked status=sent within 30min TTL
+     After 30min timeout, proposal age exceeded TTL, guard PASSED same market again
+     Every 2h scan: same market proposed, 5 daily slots burned on one market, no new signals reach user
+     FIX 1: Added DUPLICATE_BLOCK_HOURS=24 - any proposal blocks market for 24h regardless of status
+     FIX 2: Proposal status now correctly recorded: approved/rejected/expired from paper_propose stdout
+     FIX 3: Daily cap raised from 5 to 10 for testing phase
+     FIX 4: Cleared stale PH Colombian market from pending_proposals.json
+     ARCHITECTURAL LESSON: Status lifecycle must be complete end-to-end
+     sent -> approved/rejected/expired (never stuck at sent forever)
   -> GIT WORKFLOW RULE (STRICT - DO NOT VIOLATE):
      ALWAYS commit to dev branch first
      NEVER commit directly to master
