@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-03 (v18.0 - YES/NO loop fixed + health check improved + Rojas removed)
+# Last Updated: 2026-03-03 (v19.0 - Full audit + paper auto-resolve + stale proposals cleaned + git workflow fixed)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -574,6 +574,19 @@ Mission 9 IN PROGRESS: System Reconciliation + Bug Fixes - Mar 1, 2026
      Added check_yes_no_loop() - verifies bridge calls paper_propose.py
      Will now catch if YES/NO loop breaks again
      Old health check said ALL SYSTEMS OK while core feature was broken
+  -> FULL SYSTEM AUDIT (Mar 3 2026) - 3 issues found and fixed:
+     ISSUE 1: Stale sent proposal in pending_proposals.json (117 mins old) - cleaned
+     ISSUE 2: Paper Oscar position had no auto-resolve - fixed with check_paper_resolutions()
+     ISSUE 3: Git workflow broken - was committing directly to master - fixed back to dev->master
+  -> check_paper_resolutions() added to daily_monitor.py (Mar 3 2026)
+     Checks open paper positions against Gamma API daily at 9am
+     Auto-calls paper_engine.py resolve on March 15 when Oscars resolve
+     Sends Telegram alert with virtual P&L and scorecard update
+  -> GIT WORKFLOW RULE (STRICT - DO NOT VIOLATE):
+     ALWAYS commit to dev branch first
+     NEVER commit directly to master
+     Only merge dev->master after testing confirms everything works
+     Master = production, dev = experiments/fixes
   -> TO-DO LIST (carry forward every session):
      - Rotate Composio API key at composio.dev (low urgency - key never exposed publicly)
      - Oscar exit plan: positions resolve March 15 - monitor prices, have exit strategy ready
