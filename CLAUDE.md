@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-04 (v20.0 - BUG-011/012/013 fixed: duplicate guard 24h + status tracking + daily cap raised)
+# Last Updated: 2026-03-04 (v21.0 - BUG-014 fixed: n8n consuming YES/NO, use PAPER YES / PAPER NO)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -602,6 +602,15 @@ Mission 9 IN PROGRESS: System Reconciliation + Bug Fixes - Mar 1, 2026
      FIX 4: Cleared stale PH Colombian market from pending_proposals.json
      ARCHITECTURAL LESSON: Status lifecycle must be complete end-to-end
      sent -> approved/rejected/expired (never stuck at sent forever)
+  -> BUG-014 FIXED (Mar 04 2026): n8n consuming Telegram YES/NO before paper_propose.py
+     ROOT CAUSE: n8n long-polls same Telegram bot token, grabs messages first
+     paper_propose.py short-polls, arrives after message already consumed by n8n
+     FIX: Use PAPER YES / PAPER NO prefix - n8n ignores it, paper_propose catches it
+     HOW TO REPLY: Always use "PAPER YES" or "PAPER NO" in Telegram for paper trades
+     Plain YES/NO still work as fallback but PAPER prefix is required for reliability
+  -> n8n IS RUNNING on EC2 (PID ~1350) - do not kill it, needed for future workflows
+     Shares same Telegram bot token - any new feature using Telegram must use unique prefix
+     ARCHITECTURAL RULE: Always check ps aux for ALL processes before assuming exclusive access
   -> GIT WORKFLOW RULE (STRICT - DO NOT VIOLATE):
      ALWAYS commit to dev branch first
      NEVER commit directly to master

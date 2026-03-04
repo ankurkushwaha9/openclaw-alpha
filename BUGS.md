@@ -548,3 +548,60 @@ IMPACT OF FIX:
 - Daily cap slots reserved for different markets/signals
 - User will see diverse signals in Telegram not same market repeated
 - BUG-012 and BUG-013 resolved as part of same fix
+
+---
+
+## BUG-014 | n8n Consuming Telegram YES/NO Before paper_propose.py Can Read It
+Date: 2026-03-04
+Status: FIXED
+Severity: CRITICAL
+Affected: paper_trading/paper_propose.py
+
+SYMPTOM:
+User replies YES to paper trade proposal
+Bot responds "Got it. What do you want me to do?" (n8n response)
+paper_propose.py never receives the YES reply
+Trade never executes. Proposal times out after 30 minutes.
+
+ROOT CAUSE:
+n8n is running as a persistent Node.js process on EC2 (PID ~1350)
+n8n has a Telegram workflow that uses long-polling on the same bot token
+Long-polling grabs ALL incoming messages first (higher priority than short-polling)
+paper_propose.py uses short-polling (timeout=0) which arrives AFTER n8n consumes message
+Result: paper_propose.py polls but finds no new messages - they were already consumed
+
+ARCHITECTURAL FLAW MISSED IN REVIEW:
+ps aux output showed n8n process clearly
+Review focused on Python scripts only
+Node.js process running n8n was not connected to Telegram conflict
+
+WHY n8n CANNOT BE DISABLED:
+n8n will be used for other workflows in future
+Disabling it would break future integrations
+
+FIX APPLIED:
+Use unique prefix "PAPER YES" / "PAPER NO" for paper trade replies
+n8n sees unrecognized command and ignores it (no workflow matches)
+paper_propose.py explicitly listens for "PAPER YES" / "PAPER NO"
+Both systems coexist on same Telegram bot without conflict
+
+Changes:
+1. poll_for_reply() now accepts: PAPER YES, PAPER Y, P YES (and plain YES as fallback)
+2. poll_for_reply() now accepts: PAPER NO, PAPER N, P NO (and plain NO as fallback)
+3. Proposal message updated: "Reply PAPER YES / PAPER NO"
+4. Note added in message explaining prefix avoids bot conflicts
+
+FILES CHANGED:
+- paper_trading/paper_propose.py
+
+HOW TO USE GOING FORWARD:
+When you see a paper trade proposal in Telegram:
+  Reply: PAPER YES  (to execute the trade)
+  Reply: PAPER NO   (to skip)
+Plain YES/NO still work as fallback but PAPER YES/NO is preferred.
+
+LESSON:
+Architectural review must include ALL running processes (ps aux) not just Python scripts.
+Any persistent process that shares a Telegram token is a potential message consumer.
+When two systems share the same communication channel, use unique namespacing.
+Always ask: "What else is listening on this channel?"
