@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
 whale_tracker.py - Polymarket Whale Signal Detection
-Last Updated: 2026-03-07 (v5.1 - 3-LLM Consensus: 4-Stage + Dynamic Divergence + 60-day)
+Last Updated: 2026-03-07 (v5.2 - BUG-015: outcome direction fix)
+
+Changes v5.1 -> v5.2:
+  BUG-015 FIX: Whale price now direction-adjusted.
+    If whale buys NO at 0.81, implied YES prob = 1 - 0.81 = 0.19 (not 0.81).
+    Eliminates spurious signals from NO-side whale buys.
 
 Changes v5.0 -> v5.1:
   4-STAGE SYSTEM: Tactical(1-7d) / Strategic(8-21d) / Macro(22-45d) / Extreme(46-75d)
@@ -159,7 +164,9 @@ def find_whale_trades(trades, market_liquidity, days_to_resolve, is_sports=False
             if usd > liq * 0.5:
                 print(f"  [!] Manipulation guard: ${usd:,.0f} trade vs ${liq:,.0f} liq ({impact*100:.1f}%) -- skip")
                 continue
-            whales.append({"wallet":trade.get("proxyWallet","unknown"),"direction":trade.get("side","BUY").upper(),"size_usd":round(usd,2),"price":round(float(trade.get("price",0.5)),4),"impact_ratio":round(impact,5)})
+            # BUG-015 FIX: store outcome so calculate_signal can direction-adjust the price
+            outcome = trade.get("outcome", "Yes")
+            whales.append({"wallet":trade.get("proxyWallet","unknown"),"direction":trade.get("side","BUY").upper(),"size_usd":round(usd,2),"price":round(float(trade.get("price",0.5)),4),"outcome":outcome,"impact_ratio":round(impact,5)})
         except: continue
     return whales
 
@@ -168,7 +175,10 @@ def qualify_whale(address):
     return True, None, 0
 
 def calculate_signal(wt, yes_price, win_rate, count, days_to_resolve, is_sports=False):
-    whale_prob  = wt["price"]
+    # BUG-015 FIX: if whale bought NO at price P, their implied YES prob = 1 - P
+    raw_price  = wt["price"]
+    outcome    = wt.get("outcome", "Yes")
+    whale_prob = (1.0 - raw_price) if outcome == "No" else raw_price
     market_prob = float(yes_price) if yes_price else 0.5
     divergence  = abs(whale_prob - market_prob)
     t1 = get_divergence_threshold(days_to_resolve, is_sports)
@@ -193,18 +203,19 @@ def format_signal(market, wt, signal, stage):
     cat    = market.get("_category","other").upper()
     slabel = STAGE_CONFIG.get(stage,{}).get("label","?")
     sports = " [SPORTS +2% premium]" if signal["is_sports"] else ""
+    outcome_note = f" (NO-side buy, adj. YES={signal['whale_prob']:.3f})" if wt.get("outcome") == "No" else ""
     return (f"{emoji}  [{cat}]\n\nMarket: {name}\nResolves in: {days} days\n"
-            f"Direction: {wt['direction']}  Size: ${wt['size_usd']:,.2f}\n"
+            f"Direction: {wt['direction']} {wt.get('outcome','Yes')}{outcome_note}  Size: ${wt['size_usd']:,.2f}\n"
             f"Impact: {wt['impact_ratio']*100:.2f}% of pool\nWhale price: {wt['price']:.3f}\n\n"
             f"Market YES: {signal['market_prob']:.3f} ({signal['market_prob']*100:.1f}%)\n"
-            f"Whale implied: {signal['whale_prob']:.3f} ({signal['whale_prob']*100:.1f}%)\n"
+            f"Whale implied YES: {signal['whale_prob']:.3f} ({signal['whale_prob']*100:.1f}%)\n"
             f"Divergence: +{signal['divergence']*100:.1f}% (threshold: {signal['threshold_t1']*100:.1f}%{sports})\n\n"
             f"Signal: {label}\nStage: {stage} {slabel}\nReply PAPER YES to enter trade.")
 
 def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_resolution_filter=False, force_stage=None):
     global WHALE_MIN_SIZE
     print("\n" + "="*62)
-    print(f"WHALE TRACKER v5.1 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"WHALE TRACKER v5.2 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"MinLiq=${MIN_LIQUIDITY:,} | ImpactRatio={MIN_IMPACT_RATIO} | MaxHorizon={MAX_HORIZON_DAYS}d | Div=dynamic")
     print("="*62)
     if min_size: WHALE_MIN_SIZE = min_size
@@ -253,9 +264,9 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
             sig = calculate_signal(wt, yes_price, wr, cnt, days_to_res, is_sports)
             if sig["tier"] == 0: continue
             if yes_price < SKIP_THRESHOLD or yes_price > (1 - SKIP_THRESHOLD): continue
-            print(f"  [*] TIER {sig['tier']} [{category.upper()}] div={sig['divergence']*100:.1f}% (need {sig['threshold_t1']*100:.1f}%) ${wt['size_usd']:,.0f} impact={wt['impact_ratio']*100:.2f}% {days_to_res}d")
+            print(f"  [*] TIER {sig['tier']} [{category.upper()}] outcome={wt.get('outcome','?')} whale_YES={sig['whale_prob']:.3f} mkt_YES={sig['market_prob']:.3f} div={sig['divergence']*100:.1f}% (need {sig['threshold_t1']*100:.1f}%) ${wt['size_usd']:,.0f} impact={wt['impact_ratio']*100:.2f}% {days_to_res}d")
             if any(s["market_id"]==cid for s in signals_found): continue
-            signals_found.append({"market_id":cid,"market_name":market.get("question","Unknown"),"market_slug":market.get("slug",""),"market_category":category,"yes_price":yes_price,"tier":sig["tier"],"divergence":sig["divergence"],"threshold_t1":sig["threshold_t1"],"whale_prob":sig["whale_prob"],"market_prob":sig["market_prob"],"direction":wt["direction"],"size_usd":wt["size_usd"],"impact_ratio":wt["impact_ratio"],"wallet":wt["wallet"],"end_date_iso":market.get("_end_date_iso",""),"days_to_resolve":days_to_res,"stage_used":stage_used,"scanned_at":datetime.now(timezone.utc).isoformat()})
+            signals_found.append({"market_id":cid,"market_name":market.get("question","Unknown"),"market_slug":market.get("slug",""),"market_category":category,"yes_price":yes_price,"tier":sig["tier"],"divergence":sig["divergence"],"threshold_t1":sig["threshold_t1"],"whale_prob":sig["whale_prob"],"market_prob":sig["market_prob"],"direction":wt["direction"],"outcome":wt.get("outcome","Yes"),"size_usd":wt["size_usd"],"impact_ratio":wt["impact_ratio"],"wallet":wt["wallet"],"end_date_iso":market.get("_end_date_iso",""),"days_to_resolve":days_to_res,"stage_used":stage_used,"scanned_at":datetime.now(timezone.utc).isoformat()})
             if not json_output: send_telegram(format_signal(market, wt, sig, stage_used))
 
     print("\n" + "="*62)
@@ -273,7 +284,7 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
     return signals_found
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Polymarket Whale Signal Detection v5.1")
+    parser = argparse.ArgumentParser(description="Polymarket Whale Signal Detection v5.2")
     parser.add_argument("--min-size",  type=float, default=None)
     parser.add_argument("--market-id", type=str,   default=None)
     parser.add_argument("--json",      action="store_true", default=False)
