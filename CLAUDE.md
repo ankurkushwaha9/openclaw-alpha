@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-07 (v22.0 - BUG-015/016 fixed: outcome direction + inline keyboard approval)
+# Last Updated: 2026-03-07 (v23.0 - Smart Router activation plan approved, 3-day build plan locked)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -445,6 +445,95 @@ End of session protocol:
 
 plans/trading.md, plans/alpharealm9-strategy.md, plans/content.md
 plans/integrations.md - Integration roadmap (unexplored - read before building)
+
+---
+
+## SMART ROUTER ACTIVATION PLAN (Mission 11 -- Approved 2026-03-07)
+
+### CURRENT STATUS
+Runtime: direct (ALL messages go to Kimi -- Smart Router NOT active yet)
+Goal: Activate Smart Router so Alpha routes by task complexity as designed
+
+### WHY THIS MATTERS
+Right now every message -- "hi" or "validate this whale signal" -- goes to Kimi K2.5.
+After activation: Gemma handles heartbeat/simple, Kimi handles standard ops,
+Claude Sonnet handles complex signal validation. The architecture finally works as designed.
+
+### 3-LLM CONSENSUS (Claude + ChatGPT + Gemini -- March 7 2026)
+All 3 agreed:
+- Gemma 2B = Heartbeat + non-trading tasks ONLY (hard floor, no exceptions)
+- Keyword bypass list MANDATORY -- score alone cannot be trusted for trading
+- MINI_CLAUDE.md must exist before activation (Gemma cannot handle full CLAUDE.md)
+- Fail-open to Kimi -- if router crashes, system continues on Kimi, never silent
+- Shadow mode 24h before full activation -- never flip switch cold
+- $5/week hard cap on Claude API spend
+
+### GEMMA 2B ROLE (CONFIRMED BY ANKUR)
+Gemma 2B is used for HEARTBEAT ONLY + non-trading simple tasks.
+NEVER routes trading, signals, proposals, balance, or financial decisions.
+
+### KEYWORD BYPASS LIST (Any of these = minimum Kimi, never Gemma)
+Trading core: trade, signal, whale, market, polymarket, price, position, kelly, buy, sell, entry, exit
+Paper trading: paper, proposal, approve, reject, yes, no, execute, skip, tier, divergence
+Portfolio: balance, ledger, pnl, profit, loss, exposure, portfolio, wallet, usdc, stake, bet
+Market specific: oscar, masters, fed, rate, bitcoin, eth, crypto, resolve, resolution
+System ops: cron, bridge, scan, tracker, engine, alert, scorecard
+
+### COST GUARDRAILS (Locked by Ankur)
+Weekly hard cap: $5.00
+Alert threshold: $4.50 (90%) -- Telegram alert fires
+At hard cap: fallback to Kimi only until week resets
+Claude Opus daily max: 2 calls/day
+/cost command: BOTH daily AND weekly spend visible
+
+### 3-DAY BUILD PLAN
+
+DAY 1 -- Preparation (zero risk to live system)
+- [ ] Create MINI_CLAUDE.md (<800 tokens, Gemma context file)
+- [ ] Add keyword bypass logic to smart-router/router-engine.js
+- [ ] Add trading guardrail: if category=trading AND model=gemma -> reroute to Kimi
+- [ ] Add model logging: every response logs which model answered
+- [ ] Create scripts/cost_tracker.py (/cost daily + weekly command)
+- [ ] Dry-run test: 30 sample messages, verify routing decisions
+- [ ] Verify 0 trading messages route to Gemma in dry-run
+- [ ] Backup openclaw.json -> openclaw.json.backup
+SUCCESS CRITERIA: Dry-run logs show correct routing. Zero trading tasks to Gemma.
+
+DAY 2 -- Shadow Mode (24 real hours -- router logs decisions but Kimi still answers)
+- [ ] Enable shadow mode in router-engine.js
+- [ ] Run 24 hours covering at least 1 full cron cycle
+- [ ] Review shadow logs: % to Gemma vs Kimi vs Claude
+- [ ] Verify no trading tasks would have gone to Gemma
+- [ ] Check latency impact on Telegram responses
+- [ ] Ankur reviews shadow log report
+SUCCESS CRITERIA: Healthy routing distribution. Zero trading misroutes.
+
+DAY 3 -- Full Activation
+- [ ] Run node smart-router/openclaw-integration.js install
+- [ ] Restart openclaw-gateway
+- [ ] Verify /status shows Runtime: smart-router (not Runtime: direct)
+- [ ] Send 5 test messages via Telegram, verify correct routing
+- [ ] Monitor 4 hours -- Ankur on-call
+- [ ] Verify /cost command works (daily + weekly)
+- [ ] Update CLAUDE.md to v24.0
+- [ ] Push all changes to GitHub
+SUCCESS CRITERIA: /status shows smart-router. Test messages route correctly.
+
+### FILES TO CREATE/MODIFY
+smart-router/MINI_CLAUDE.md    -- CREATE (Day 1)
+smart-router/router-engine.js  -- MODIFY: keyword bypass + guardrail + logging (Day 1)
+scripts/cost_tracker.py        -- CREATE: /cost daily+weekly command (Day 1)
+openclaw.json                  -- MODIFY via integration script (Day 3)
+CLAUDE.md                      -- UPDATE to v24.0 (Day 3)
+
+### SESSION HANDOFF INSTRUCTIONS
+If starting a new chat session to continue this work:
+1. Run the standard orient command:
+   cat CLAUDE.md && echo "---BUGS---" && cat BUGS.md && echo "---GIT---" && git log --oneline -10
+2. Tell new session: "Continue Mission 11 Smart Router -- start Day X"
+3. New session reads this section and knows exactly where to resume
+
+---
 
 ---
 
