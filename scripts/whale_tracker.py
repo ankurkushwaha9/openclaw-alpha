@@ -440,6 +440,7 @@ def format_signal(market, wt, signal, stage):
 def scan_markets(min_size=None, target_market_id=None,
                  json_output=False, skip_resolution_filter=False,
                  force_stage=None):
+    global WHALE_MIN_SIZE
 
     print("\n" + "="*60)
     print(f"WHALE TRACKER v5 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
@@ -448,7 +449,6 @@ def scan_markets(min_size=None, target_market_id=None,
     print("="*60)
 
     if min_size:
-        global WHALE_MIN_SIZE
         WHALE_MIN_SIZE = min_size
 
     signals_found = []
