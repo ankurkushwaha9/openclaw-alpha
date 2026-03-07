@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-04 (v21.0 - BUG-014 fixed: n8n consuming YES/NO, use PAPER YES / PAPER NO)
+# Last Updated: 2026-03-07 (v22.0 - BUG-015/016 fixed: outcome direction + inline keyboard approval)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -272,17 +272,29 @@ Dashboard: dashboard.uptimerobot.com/monitors/802403664
 
 ### Whale Tracker:
 Script: ~/.openclaw/workspace/scripts/whale_tracker.py
+Version: v5.2 (2026-03-07) -- 3-LLM consensus (Claude + Gemini + ChatGPT)
 API: https://data-api.polymarket.com (public, no auth)
 KEY FIX: Wallet field is proxyWallet (NOT transactorAddress or maker)
 
-Run: cd ~/.openclaw/workspace && source skills/polyclaw/.venv/bin/activate && python scripts/whale_tracker.py
+Run: cd ~/.openclaw/workspace && /home/ubuntu/.openclaw/workspace/polyclaw/.venv/bin/python3 scripts/whale_tracker.py
+Cron: 0 */2 * * * (every 2 hours -- upgrade to 30min is PENDING)
 
-Thresholds: $500 min trade | 60% min win rate
-Tier 1: >15% divergence - ACT (after Ankur YES)
-Tier 2: 8-15% divergence - QUEUE, monitor hourly
-Tier 3: <8% - IGNORE
+v5.2 Architecture (LIVE):
+- 4-STAGE EXPANSION: Tactical(1-7d $400) / Strategic(8-21d $1500) / Macro(22-45d $3500) / Extreme(46-75d $7000)
+- DYNAMIC DIVERGENCE V-SHAPE: 8%/6%/9%/11% by days_to_resolve (best signal zone = 8-21d at 6%)
+- MIN_LIQUIDITY = $10,000 (volume field broken in Gamma API -- use liquidity only)
+- MIN_IMPACT_RATIO = 0.003 (trade must be 0.3%+ of pool to count)
+- MANIPULATION GUARD: skip if trade > 50% of pool
+- SPORTS: included, +2% divergence premium, whale_min=$300
+- HARD CEILING: 75 days max horizon
+- BUG-015 FIX: outcome direction-adjusted (NO buy at 0.81 = implied YES of 0.19, not 0.81)
 
-Pending: Cron scheduling (add after Oscar resolution March 15)
+Tier signals:
+Tier 1: divergence >= threshold (dynamic) -- ACT (after Ankur YES)
+Tier 2: divergence >= threshold * 0.65 -- MONITOR
+Tier 0: below threshold -- IGNORE
+
+Category priority: Geopolitics > Economics > Entertainment > Sports > Politics > Crypto > Other
 
 ---
 
@@ -510,6 +522,10 @@ Master Lessons:
 - Teyana (Best Supporting) down 25% from entry (70c->52c) as of Feb 24 - watch closely
 - Bridge pending_proposals.json may be legacy list format - always normalise to dict on load
 - bridge.log grew to 273KB because log() did print()+file write AND cron did >> redirect = 2x per call
+- BUG-015: Whale outcome direction matters -- NO buy at 0.81 means implied YES=0.19, not 0.81. Always check outcome field
+- BUG-016: getUpdates is destructive -- any process sharing bot token steals messages. Use inline keyboard (callback_query) for approvals
+- Inline keyboard buttons (callback_query) are architecturally invisible to n8n -- safe approval channel
+- CLAUDE.md is the sync document for YOU, ALPHA BOT, and ANKUR -- update it every session
 - Never mix stdout cron redirect (>>) AND internal file writes in same script - pick one
 - market-monitor.js crashed Feb 16 on Web3 constructor error (Node v24) - silent failure for 2 weeks
 - A crashed monitor = invisible blind spots - health check says OK but data is stale underneath
