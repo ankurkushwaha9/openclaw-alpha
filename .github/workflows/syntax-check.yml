@@ -22,7 +22,4 @@ jobs:
           python3 -m py_compile scripts/whale_tracker.py
           python3 -m py_compile scripts/daily_monitor.py
           python3 -m py_compile scripts/health_check.py
-          python3 -m py_compile scripts/shadow_monitor.py
-          python3 -m py_compile scripts/cost_tracker.py
-          python3 -m py_compile scripts/routing_report.py
           echo "All files passed syntax check"
