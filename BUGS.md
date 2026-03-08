@@ -696,3 +696,77 @@ a shared destructive resource — prefixes don't help.
 Inline keyboard buttons use callback_query — a separate, non-competing update stream.
 For any approval flow where another process shares the bot token, use inline keyboards.
 
+
+---
+
+## BUG-017 — Shadow Monitor Scoring Metadata Wrapper Instead of Real Messages
+STATUS: FIXED (2026-03-08, commit cc252f4)
+
+DISCOVERED BY: Main Claude session QA review after Day 2 session completed.
+
+ROOT CAUSE:
+OpenClaw prepends every user message with a metadata header before writing to session .jsonl:
+  "Conversation info (untrusted metadata): ```json { "message_id": "...", "sender": ... } ```
+  [actual user message here]"
+
+shadow_monitor.py was passing the FULL string (wrapper + message) to score_complexity()
+and has_trading_keyword(). This meant the scorer was evaluating "Conversation info..."
+boilerplate every time, not the real Telegram message. Every non-trading message scored
+exactly 5 (simple tier) regardless of actual content -- silent accuracy killer.
+
+EVIDENCE:
+All routing.log entries showed msg_snippet starting with "Conversation info (untrusted metadata)"
+and score=5 uniformly. After fix, real messages appear: 'Hello', 'PAPER YES', 'whale bought YES'.
+
+FIX APPLIED:
+Added strip_metadata_wrapper() function to scripts/shadow_monitor.py.
+Function detects the "Conversation info" prefix, finds the closing ``` of the JSON block,
+and returns only the text after it -- the actual user message.
+Wired into watch_session() at the point where pending_user_text is assigned.
+
+FILES CHANGED:
+- scripts/shadow_monitor.py (added strip_metadata_wrapper, wired at line ~253)
+
+LESSON:
+OpenClaw always wraps messages with metadata. Any component that reads session .jsonl
+files and needs to process user content must strip this wrapper first.
+
+---
+
+## BUG-018 — Underscore Callback IDs Bypass Trading Keyword Detection
+STATUS: FIXED (2026-03-08, commit cc252f4)
+
+DISCOVERED BY: Main Claude session QA review -- visible in shadow monitor logs after BUG-017 fix.
+
+ROOT CAUSE:
+Telegram inline keyboard callbacks use underscore-joined IDs: PAPER_YES_1772897697, TEST_YES_123.
+has_trading_keyword() used re.findall(r'\b\w+\b', text) for tokenization.
+In regex, underscore (_) is a word character (\w), so "PAPER_YES" has NO word boundary
+between PAPER and YES. The token extracted is "PAPER_YES" as one unit, which does not
+match the keyword set entry "paper" or "yes".
+Result: PAPER_YES_1772897697 scored as SIMPLE tier, not TRADING -- wrong routing.
+
+EVIDENCE:
+After BUG-017 fix, shadow log showed:
+  SIMPLE | msg='PAPER_YES_1772897697'  <-- wrong, should be TRADING
+  SIMPLE | msg='TEST_YES_1772897614'   <-- wrong, should be TRADING
+
+After BUG-018 fix:
+  MEDIUM [TRADING_GUARDRAIL] | msg='PAPER_YES_1772897697'  <-- correct
+
+FIX APPLIED:
+In has_trading_keyword() in scripts/shadow_monitor.py:
+  Before: words = re.findall(r'\b\w+\b', text_lower)
+  After:  normalized = text_lower.replace('_', ' ')
+          words = re.findall(r'\b[a-z]+\b', normalized)
+Underscores become spaces before tokenizing, so PAPER_YES_123 splits into
+["paper", "yes", "123"] and both "paper" and "yes" match the keyword set.
+
+FILES CHANGED:
+- scripts/shadow_monitor.py (has_trading_keyword function)
+
+LESSON:
+Any keyword detection that may encounter underscore-joined identifiers (callback IDs,
+snake_case variable names, etc.) must normalize underscores to spaces before tokenizing.
+Word-boundary regex alone is not sufficient.
+
