@@ -360,3 +360,413 @@ Self-heals automatically. Fix: copy tail of bridge.log.bak to bridge.log.
 LESSON:
 Always label which system (PAPER vs REAL) in health check messages.
 Two parallel systems with similar numbers will always cause confusion without labels.
+
+---
+
+## BUG-007 | YES/NO Loop Never Wired — Paper Trades Never Executed
+Date: 2026-03-03
+Status: FIXED
+Severity: CRITICAL
+Affected: paper_trading/paper_signal_bridge.py
+
+SYMPTOM:
+Proposals sent to Telegram with "Reply YES to execute paper trade"
+User replies YES or NO but nothing happens.
+Ledger never updates. Scorecard stays 0/10.
+
+ROOT CAUSE:
+paper_signal_bridge.py was sending Telegram message via send_telegram() then immediately exiting.
+Nobody was listening for the YES/NO reply.
+paper_propose.py (which polls for reply + executes trade) was NEVER called by the bridge.
+The YES/NO instruction in the Telegram message was a dead end from day one.
+
+FIX APPLIED:
+Replaced send_telegram(proposal_msg) in bridge with subprocess call to paper_propose.py
+paper_propose.py sends proposal + waits 30min for reply + executes trade if YES
+
+FILES CHANGED:
+- paper_trading/paper_signal_bridge.py
+
+IMPACT:
+Every paper trade proposed since Feb 23 was never executable by user.
+All proposals expired silently. Scorecard stuck at 0/10.
+2 weeks of paper trading data lost.
+
+LESSON:
+End-to-end testing is mandatory. Sending a message is not the same as completing a workflow.
+Health check must verify the FULL loop, not just individual components.
+
+---
+
+## BUG-008 | Rojas Position Leaked From E2E Test Into Production Ledger
+Date: 2026-03-03
+Status: FIXED
+Severity: HIGH
+Affected: paper_trading/ledger.json
+
+SYMPTOM:
+Rojas Texas Abortion Case ($10) appeared in production ledger.json
+Gamma API showed "price unavailable" for this position every daily report
+Paper balance showed $48 instead of $58
+
+ROOT CAUSE:
+E2E test on Feb 24 was supposed to write to test_ledger.json (BOT_ENV=e2e_test)
+But Rojas position leaked into production ledger.json
+Market ID was hex format (0x3061...) — Gamma API requires numeric IDs
+Position could never be priced or resolved
+
+CASCADING EFFECT:
+$10 dead position eating 15% exposure capacity permanently
+Any new $10 trade pushed exposure to 42.1% > 40% cap
+ALL new signals blocked by exposure guard
+Paper trading system completely frozen for 7+ days
+
+FIX APPLIED:
+Removed Rojas from ledger.json
+Refunded $10 virtual to cash: $48 -> $58
+
+FILES CHANGED:
+- paper_trading/ledger.json
+
+LESSON:
+E2E tests must use strict isolation. BOT_ENV check must be enforced at write time in paper_engine.py.
+Any position with hex market ID should be rejected at entry — add validation.
+
+---
+
+## BUG-009 | Health Check Reported ALL SYSTEMS OK While Core Feature Was Broken
+Date: 2026-03-03
+Status: FIXED
+Severity: HIGH
+Affected: scripts/health_check.py
+
+SYMPTOM:
+Health check showed ALL SYSTEMS OK for 7+ days
+Meanwhile YES/NO loop was completely broken (BUG-007)
+And Rojas was freezing all new trades (BUG-008)
+
+ROOT CAUSE:
+Health check verified: crons active, no log errors, Telegram reachable, no spam
+But NEVER verified: whether paper_propose.py was actually called by bridge
+"No errors in bridge.log" is not the same as "system working correctly"
+Bridge was running perfectly and logging cleanly — while core feature was silently broken
+
+FIX APPLIED:
+Added check_yes_no_loop() to health check
+Verifies bridge.py contains subprocess call to paper_propose.py
+Will now explicitly fail and alert if YES/NO loop breaks again
+
+FILES CHANGED:
+- scripts/health_check.py
+
+LESSON:
+Health checks must verify OUTCOMES not just ACTIVITY.
+"Script ran without errors" != "Script did what it was supposed to do"
+Every critical workflow path needs its own health check verification.
+
+---
+
+## BUG-010 | Health Check WORKSPACE Variable Not Defined
+Date: 2026-03-04
+Status: FIXED
+Severity: MEDIUM
+Affected: scripts/health_check.py
+
+SYMPTOM:
+Health check showing ISSUES DETECTED every 30 mins:
+"Cannot verify YES/NO loop: name WORKSPACE is not defined"
+
+ROOT CAUSE:
+check_yes_no_loop() used WORKSPACE variable
+But health_check.py defines its path variable as BASE not WORKSPACE
+Copy-paste error when writing the new check function
+
+FIX APPLIED:
+Changed WORKSPACE -> BASE in check_yes_no_loop()
+
+FILES CHANGED:
+- scripts/health_check.py
+
+LESSON:
+When adding new functions to existing files always check what variable names
+that file uses for common paths. Do not assume same names as other files.
+
+---
+
+## BUG-011 | Duplicate Guard Not Preventing Same Market Repeated Every 2 Hours
+Date: 2026-03-04
+Status: FIXED
+Severity: HIGH
+Affected: paper_trading/paper_signal_bridge.py
+
+SYMPTOM:
+Same market (PH Colombian election) proposed 5 times in one day
+Every 2 hour scan sends same proposal to Telegram
+Daily cap of 5 hit entirely by one market
+All 5 slots wasted — no other signals can get through
+User never gets YES/NO prompt for new/different signals
+
+ROOT CAUSE:
+guard_duplicate() checks pending_proposals.json for status="sent" within TTL (30 min)
+After paper_propose.py runs (30min wait), proposal status stays "sent" in pending
+But when paper_propose.py is called via subprocess:
+  - It sends proposal and waits 30 min
+  - After timeout/expire, bridge marks it "sent" and moves on
+  - Next scan 2 hours later: proposal is now 2+ hours old > 30min TTL
+  - guard_duplicate() sees it as "expired" — PASSES duplicate check
+  - Same market proposed again
+
+CASCADING EFFECT:
+5/5 daily cap consumed by same market every day
+No other signals reach user
+Paper trading scorecard cannot progress
+System appears to be working (proposals sent) but user gets spammed with same market
+
+FIX NEEDED:
+1. After paper_propose.py completes (YES/NO/timeout), update proposal status:
+   - YES -> "approved"
+   - NO -> "rejected"  
+   - timeout -> "expired"
+2. guard_duplicate() must block markets with status "expired" or "rejected" for 24 hours
+   Not just "sent" within 30min TTL
+3. Raise daily cap from 5 to 10 temporarily during testing phase
+
+FILES TO CHANGE:
+- paper_trading/paper_signal_bridge.py (guard_duplicate TTL + status update)
+- BUGS.md (this entry)
+
+FIX APPLIED (Mar 04 2026):
+1. Added DUPLICATE_BLOCK_HOURS = 24 constant
+2. guard_duplicate now blocks ANY proposal status (sent/expired/rejected/approved) for 24h
+3. Proposal status now correctly recorded as approved/rejected/expired from paper_propose stdout
+4. Daily cap raised from 5 to 10 for testing phase
+5. Cleared stale PH Colombian market from pending_proposals.json
+6. Logic unit tested - all 3 test cases pass
+
+IMPACT OF FIX:
+- Same market will never repeat within 24 hours regardless of outcome
+- Daily cap slots reserved for different markets/signals
+- User will see diverse signals in Telegram not same market repeated
+- BUG-012 and BUG-013 resolved as part of same fix
+
+---
+
+## BUG-014 | n8n Consuming Telegram YES/NO Before paper_propose.py Can Read It
+Date: 2026-03-04
+Status: FIXED
+Severity: CRITICAL
+Affected: paper_trading/paper_propose.py
+
+SYMPTOM:
+User replies YES to paper trade proposal
+Bot responds "Got it. What do you want me to do?" (n8n response)
+paper_propose.py never receives the YES reply
+Trade never executes. Proposal times out after 30 minutes.
+
+ROOT CAUSE:
+n8n is running as a persistent Node.js process on EC2 (PID ~1350)
+n8n has a Telegram workflow that uses long-polling on the same bot token
+Long-polling grabs ALL incoming messages first (higher priority than short-polling)
+paper_propose.py uses short-polling (timeout=0) which arrives AFTER n8n consumes message
+Result: paper_propose.py polls but finds no new messages - they were already consumed
+
+ARCHITECTURAL FLAW MISSED IN REVIEW:
+ps aux output showed n8n process clearly
+Review focused on Python scripts only
+Node.js process running n8n was not connected to Telegram conflict
+
+WHY n8n CANNOT BE DISABLED:
+n8n will be used for other workflows in future
+Disabling it would break future integrations
+
+FIX APPLIED:
+Use unique prefix "PAPER YES" / "PAPER NO" for paper trade replies
+n8n sees unrecognized command and ignores it (no workflow matches)
+paper_propose.py explicitly listens for "PAPER YES" / "PAPER NO"
+Both systems coexist on same Telegram bot without conflict
+
+Changes:
+1. poll_for_reply() now accepts: PAPER YES, PAPER Y, P YES (and plain YES as fallback)
+2. poll_for_reply() now accepts: PAPER NO, PAPER N, P NO (and plain NO as fallback)
+3. Proposal message updated: "Reply PAPER YES / PAPER NO"
+4. Note added in message explaining prefix avoids bot conflicts
+
+FILES CHANGED:
+- paper_trading/paper_propose.py
+
+HOW TO USE GOING FORWARD:
+When you see a paper trade proposal in Telegram:
+  Reply: PAPER YES  (to execute the trade)
+  Reply: PAPER NO   (to skip)
+Plain YES/NO still work as fallback but PAPER YES/NO is preferred.
+
+LESSON:
+Architectural review must include ALL running processes (ps aux) not just Python scripts.
+Any persistent process that shares a Telegram token is a potential message consumer.
+When two systems share the same communication channel, use unique namespacing.
+Always ask: "What else is listening on this channel?"
+
+---
+
+## BUG-015 | Whale Signal Firing on NO-Side Buys (Wrong Direction Math)
+Date: 2026-03-07
+Status: FIXED v5.2
+Severity: HIGH
+Affected: scripts/whale_tracker.py
+
+SYMPTOM:
+Scottie Scheffler Masters signal fired at 60.5% divergence.
+Whale price 0.81 vs market 0.205 — looked like massive YES signal.
+Was a FALSE POSITIVE — no real edge existed.
+
+ROOT CAUSE:
+calculate_signal() used whale trade price directly as implied YES probability.
+But the whale bought NO at 0.81 — meaning their implied YES = 1 - 0.81 = 0.19.
+Market YES = 0.205. Real divergence = 1.5%. Well below 9% threshold.
+Code treated any buy as a YES-side buy regardless of outcome field.
+
+FIX APPLIED:
+1. find_whale_trades() now stores outcome field ("Yes" or "No") in whale dict
+2. calculate_signal() direction-adjusts: if outcome=="No", whale_prob = 1 - raw_price
+3. Scan log now shows outcome= and whale_YES= fields for transparency
+4. Telegram signal message shows "(NO-side buy, adj. YES=X.XXX)" when applicable
+
+FILES CHANGED:
+- scripts/whale_tracker.py (v5.1 → v5.2)
+
+VERIFIED:
+Unit tested both cases:
+- NO buy at 0.81 → whale_YES=0.190, div=1.5%, tier=0 (correctly no signal)
+- YES buy at 0.40 → whale_YES=0.400, div=20.0%, tier=1 (correctly fires)
+
+LESSON:
+Polymarket trades have an outcome field ("Yes"/"No") — always direction-adjust.
+A whale buying NO at 0.81 is bearish on YES, not bullish.
+Never treat raw trade price as implied YES probability without checking outcome.
+
+---
+
+## BUG-016 | Alpha Bot (n8n) Consuming PAPER YES Callback Before paper_propose.py
+Date: 2026-03-07
+Status: FIXED
+Severity: CRITICAL
+Affected: paper_trading/paper_propose.py
+
+SYMPTOM:
+User presses PAPER YES in Telegram.
+Alpha Bot (n8n, PID ~1350) grabs the message via getUpdates (destructive read).
+paper_propose.py polls same endpoint, finds nothing, proposal expires after 30 min.
+Trade never executes despite user approving.
+BUG-014 prefix fix ("PAPER YES") was insufficient — n8n still consumed the message
+even if it didn't match a workflow, because getUpdates is destructive regardless.
+
+ROOT CAUSE:
+Both n8n AND paper_propose.py poll the same Telegram bot token via getUpdates.
+getUpdates is a destructive read — whichever process polls first consumes the update.
+n8n is a persistent Node.js process (PID ~1350), always running, faster than Python.
+BUG-014's "PAPER YES" prefix only prevented n8n from ACTING on the message,
+not from CONSUMING it. The race condition was still fully present.
+
+FIX APPLIED:
+Replaced text polling entirely with Telegram Inline Keyboard buttons.
+Buttons fire callback_query — a completely different Telegram update type.
+n8n only consumes message updates, never callback_query updates.
+Race condition is architecturally impossible — different update types, no collision.
+
+Additional hardening:
+- answerCallbackQuery called immediately to dismiss loading spinner
+- Keyboard removed after button press to prevent double-tap
+- Text fallback (PAPER YES/NO) retained as belt-and-suspenders
+
+HOW TO USE GOING FORWARD:
+Paper trade proposals now arrive with two buttons: [YES - Execute] [NO - Skip]
+Tap the button. That's it. No text reply needed.
+Text "PAPER YES" / "PAPER NO" still works as fallback.
+
+FILES CHANGED:
+- paper_trading/paper_propose.py
+
+CONFIRMED:
+Live test passed — callback_query received: TEST_YES_1772897839
+Alpha Bot architecturally cannot interfere with button responses.
+
+LESSON:
+When two systems share a Telegram bot token, text polling (getUpdates) is ALWAYS
+a shared destructive resource — prefixes don't help.
+Inline keyboard buttons use callback_query — a separate, non-competing update stream.
+For any approval flow where another process shares the bot token, use inline keyboards.
+
+
+---
+
+## BUG-017 — Shadow Monitor Scoring Metadata Wrapper Instead of Real Messages
+STATUS: FIXED (2026-03-08, commit cc252f4)
+
+DISCOVERED BY: Main Claude session QA review after Day 2 session completed.
+
+ROOT CAUSE:
+OpenClaw prepends every user message with a metadata header before writing to session .jsonl:
+  "Conversation info (untrusted metadata): ```json { "message_id": "...", "sender": ... } ```
+  [actual user message here]"
+
+shadow_monitor.py was passing the FULL string (wrapper + message) to score_complexity()
+and has_trading_keyword(). This meant the scorer was evaluating "Conversation info..."
+boilerplate every time, not the real Telegram message. Every non-trading message scored
+exactly 5 (simple tier) regardless of actual content -- silent accuracy killer.
+
+EVIDENCE:
+All routing.log entries showed msg_snippet starting with "Conversation info (untrusted metadata)"
+and score=5 uniformly. After fix, real messages appear: 'Hello', 'PAPER YES', 'whale bought YES'.
+
+FIX APPLIED:
+Added strip_metadata_wrapper() function to scripts/shadow_monitor.py.
+Function detects the "Conversation info" prefix, finds the closing ``` of the JSON block,
+and returns only the text after it -- the actual user message.
+Wired into watch_session() at the point where pending_user_text is assigned.
+
+FILES CHANGED:
+- scripts/shadow_monitor.py (added strip_metadata_wrapper, wired at line ~253)
+
+LESSON:
+OpenClaw always wraps messages with metadata. Any component that reads session .jsonl
+files and needs to process user content must strip this wrapper first.
+
+---
+
+## BUG-018 — Underscore Callback IDs Bypass Trading Keyword Detection
+STATUS: FIXED (2026-03-08, commit cc252f4)
+
+DISCOVERED BY: Main Claude session QA review -- visible in shadow monitor logs after BUG-017 fix.
+
+ROOT CAUSE:
+Telegram inline keyboard callbacks use underscore-joined IDs: PAPER_YES_1772897697, TEST_YES_123.
+has_trading_keyword() used re.findall(r'\b\w+\b', text) for tokenization.
+In regex, underscore (_) is a word character (\w), so "PAPER_YES" has NO word boundary
+between PAPER and YES. The token extracted is "PAPER_YES" as one unit, which does not
+match the keyword set entry "paper" or "yes".
+Result: PAPER_YES_1772897697 scored as SIMPLE tier, not TRADING -- wrong routing.
+
+EVIDENCE:
+After BUG-017 fix, shadow log showed:
+  SIMPLE | msg='PAPER_YES_1772897697'  <-- wrong, should be TRADING
+  SIMPLE | msg='TEST_YES_1772897614'   <-- wrong, should be TRADING
+
+After BUG-018 fix:
+  MEDIUM [TRADING_GUARDRAIL] | msg='PAPER_YES_1772897697'  <-- correct
+
+FIX APPLIED:
+In has_trading_keyword() in scripts/shadow_monitor.py:
+  Before: words = re.findall(r'\b\w+\b', text_lower)
+  After:  normalized = text_lower.replace('_', ' ')
+          words = re.findall(r'\b[a-z]+\b', normalized)
+Underscores become spaces before tokenizing, so PAPER_YES_123 splits into
+["paper", "yes", "123"] and both "paper" and "yes" match the keyword set.
+
+FILES CHANGED:
+- scripts/shadow_monitor.py (has_trading_keyword function)
+
+LESSON:
+Any keyword detection that may encounter underscore-joined identifiers (callback IDs,
+snake_case variable names, etc.) must normalize underscores to spaces before tokenizing.
+Word-boundary regex alone is not sufficient.
+

@@ -135,8 +135,8 @@ def check_cron():
 def check_yes_no_loop():
     """Is paper_propose.py actually wired into the bridge? Core YES/NO loop check."""
     try:
-        bridge_path = WORKSPACE / "paper_trading" / "paper_signal_bridge.py"
-        propose_path = WORKSPACE / "paper_trading" / "paper_propose.py"
+        bridge_path = BASE / "paper_trading" / "paper_signal_bridge.py"
+        propose_path = BASE / "paper_trading" / "paper_propose.py"
 
         if not bridge_path.exists():
             return False, "❌ paper_signal_bridge.py missing"
@@ -156,7 +156,29 @@ def check_yes_no_loop():
     except Exception as e:
         return False, f"❌ Cannot verify YES/NO loop: {e}"
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+
+def check_shadow_monitor():
+    from pathlib import Path
+    from datetime import datetime, timezone
+    heartbeat = Path('/tmp/shadow_monitor.heartbeat')
+    log_file = Path('/home/ubuntu/.openclaw/workspace/logs/routing.log')
+
+    if not heartbeat.exists():
+        return False, 'Shadow monitor NOT running - start: nohup python3 scripts/shadow_monitor.py >> /tmp/shadow_monitor.log 2>&1 &'
+
+    try:
+        last_beat = datetime.fromisoformat(heartbeat.read_text().strip())
+        age = (datetime.now(timezone.utc) - last_beat).total_seconds()
+        if age > 120:
+            return False, f'Shadow monitor stale (last beat {int(age)}s ago)'
+    except Exception:
+        return False, 'Shadow monitor heartbeat unreadable'
+
+    lines_count = 0
+    if log_file.exists():
+        lines_count = sum(1 for _ in open(log_file))
+
+    return True, f'Shadow monitor running | routing.log: {lines_count} entries'
 
 def run_health_check():
     now = datetime.now(timezone.utc).strftime('%b %d %H:%M UTC')
@@ -168,6 +190,7 @@ def run_health_check():
         check_portfolio(),
         check_spam(),
         check_yes_no_loop(),
+        check_shadow_monitor(),
     ]
     
     all_ok = all(ok for ok, _ in checks)

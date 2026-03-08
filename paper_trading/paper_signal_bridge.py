@@ -41,7 +41,8 @@ MAX_BET           = 10.00  # hard cap per trade
 MIN_BET           = 3.00   # floor per trade
 KELLY_FRACTION    = 0.25   # conservative: use 25% of full Kelly
 PROPOSAL_TTL_MINS = 30     # proposals expire after 30 min
-MAX_PROPOSALS_DAY = 5      # daily cap — max Telegram proposals per UTC day
+DUPLICATE_BLOCK_HOURS = 24  # same market blocked for 24h after any proposal
+MAX_PROPOSALS_DAY = 10     # daily cap — max Telegram proposals per UTC day
 
 # --- Category keyword map (unchanged from v1) ---------------------------------
 CATEGORY_KEYWORDS = {
@@ -280,23 +281,26 @@ def guard_tier(signal: dict) -> tuple[bool, str]:
 def guard_exposure(ledger: dict, amount: float, total_portfolio: float) -> tuple[bool, str]:
     total_invested = sum(p["virtual_amount"] for p in ledger["open_positions"])
     new_exposure   = (total_invested + amount) / total_portfolio if total_portfolio > 0 else 1
-    if new_exposure <= MAX_EXPOSURE_PCT:
+    if new_exposure < MAX_EXPOSURE_PCT:
         return True, f"Exposure after: {new_exposure*100:.1f}% (max {MAX_EXPOSURE_PCT*100:.0f}%)"
     return False, f"Exposure {new_exposure*100:.1f}% exceeds {MAX_EXPOSURE_PCT*100:.0f}% max"
 
 
 def guard_duplicate(ledger: dict, pending: dict, market_id: str) -> tuple[bool, str]:
+    # Block if already have open position in this market
     for pos in ledger["open_positions"]:
         if pos["market_id"] == market_id:
-            return False, f"Already open in {market_id[:16]}..."
+            return False, "Already have open position in this market"
+    # Block if ANY proposal for this market within last 24h (any status)
+    # Prevents same market looping every 2h regardless of YES/NO/timeout outcome
     now = datetime.now(timezone.utc)
     for prop in pending.get("proposals", []):
-        if prop.get("market_id") == market_id and prop.get("status") in ("sent", "blocked"):
+        if prop.get("market_id") == market_id:
             age_mins = (now - datetime.fromisoformat(prop["sent_at"])).total_seconds() / 60
-            ttl = PROPOSAL_TTL_MINS if prop.get("status") == "sent" else 2880
-            if age_mins < ttl:
-                return False, f"Proposal blocked {age_mins:.0f}min ago (TTL {ttl}min)"
-    return True, "Market is fresh — no duplicate"
+            if age_mins < DUPLICATE_BLOCK_HOURS * 60:
+                status = prop.get("status", "unknown")
+                return False, f"Market seen {age_mins:.0f}min ago (status={status}) - 24h block active"
+    return True, "Market is fresh - no duplicate"
 
 
 def guard_category(cat_exposure: dict, category: str,
@@ -437,39 +441,21 @@ def run_bridge(dry_run=False):
         amount, sizing_rationale = calculate_trade_size(signal, total_portfolio)
         log(f"  Kelly sizing: {sizing_rationale}")
 
-        # --- Guard 2: Duplicate (before exposure to stop spam) ---
-        ok, reason = guard_duplicate(ledger, pending, market_id)
-        log(f"  Guard 2 (duplicate): {'PASS' if ok else 'BLOCK'} — {reason}")
-        if not ok:
-            continue
-
-        # --- Guard 3: Exposure ---
+        # --- Guard 2: Exposure ---
         total_invested = sum(p["virtual_amount"] for p in ledger["open_positions"])
-        # Trim bet to fit within remaining exposure headroom (avoid hard block when close to cap)
-        if total_portfolio > 0:
-            headroom = (MAX_EXPOSURE_PCT * total_portfolio) - total_invested
-            if headroom < amount and headroom >= MIN_BET:
-                log(f"  Exposure headroom ${headroom:.2f} < requested ${amount:.2f} - trimming bet to fit cap")
-                amount = round(headroom, 2)
         exposure_after = (total_invested + amount) / total_portfolio if total_portfolio > 0 else 1
         ok, reason = guard_exposure(ledger, amount, total_portfolio)
-        log(f"  Guard 3 (exposure):  {'PASS' if ok else 'BLOCK'} — {reason}")
+        log(f"  Guard 2 (exposure):  {'PASS' if ok else 'BLOCK'} — {reason}")
         if not ok:
-            # Only alert once - don't spam if already blocked before
-            already_blocked = any(
-                p.get("market_id") == market_id and p.get("status") == "blocked"
-                for p in pending["proposals"]
+            send_telegram(
+                f"PAPER BRIDGE ALERT\n"
+                f"Signal BLOCKED by exposure guard\n"
+                f"- Market: {market_name[:50]}\n"
+                f"- Reason: {reason}\n"
+                f"- Post-trade exposure would be: {exposure_after*100:.1f}%\n"
+                f"- Portfolio currently at {(total_invested/total_portfolio*100):.1f}% deployed",
+                dry_run
             )
-            if not already_blocked:
-                send_telegram(
-                    f"PAPER BRIDGE ALERT\n"
-                    f"Signal BLOCKED by exposure guard\n"
-                    f"- Market: {market_name[:50]}\n"
-                    f"- Reason: {reason}\n"
-                    f"- Post-trade exposure would be: {exposure_after*100:.1f}%\n"
-                    f"- Portfolio currently at {(total_invested/total_portfolio*100):.1f}% deployed",
-                    dry_run
-                )
             # Record blocked proposal so duplicate guard suppresses future spam
             blocked_record = {
                 "market_id":    market_id,
@@ -482,6 +468,12 @@ def run_bridge(dry_run=False):
             if not dry_run:
                 save_pending(pending)
                 log(f"Blocked proposal recorded — future spam suppressed")
+            continue
+
+        # --- Guard 3: Duplicate ---
+        ok, reason = guard_duplicate(ledger, pending, market_id)
+        log(f"  Guard 3 (duplicate): {'PASS' if ok else 'BLOCK'} — {reason}")
+        if not ok:
             continue
 
         # --- Guard 4: Category cap ---
@@ -542,7 +534,19 @@ def run_bridge(dry_run=False):
                 sent = False
 
         if sent:
-            # CRITICAL: Mark sent IMMEDIATELY (Phase 2 loop bug lesson applied)
+            # Determine final status from paper_propose stdout output
+            propose_out = result.stdout if (not dry_run and "result" in dir()) else ""
+            if "[YES received]" in propose_out:
+                final_status = "approved"
+            elif "[NO received]" in propose_out:
+                final_status = "rejected"
+            elif "[TIMEOUT]" in propose_out:
+                final_status = "expired"
+            else:
+                final_status = "expired"  # safe default: blocks duplicate for 24h
+
+            log(f"Proposal outcome: {final_status}", "PROPOSAL")
+
             proposal_record = {
                 "market_id":      market_id,
                 "market_name":    market_name,
@@ -554,7 +558,7 @@ def run_bridge(dry_run=False):
                 "divergence":     signal["divergence"],
                 "days_to_resolve": days_left,
                 "end_date_iso":   signal.get("end_date_iso", ""),
-                "status":         "sent",
+                "status":         final_status,
                 "sent_at":        datetime.now(timezone.utc).isoformat(),
             }
             pending["proposals"].append(proposal_record)
@@ -572,15 +576,10 @@ def run_bridge(dry_run=False):
     if not dry_run:
         now    = datetime.now(timezone.utc)
         before = len(pending["proposals"])
-        def _age_mins(p):
-            ts = datetime.fromisoformat(p["sent_at"])
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            return (now - ts).total_seconds() / 60
-
         pending["proposals"] = [
             p for p in pending["proposals"]
-            if _age_mins(p) < (2880 if p.get("status") == "blocked" else PROPOSAL_TTL_MINS * 2)
+            if (now - datetime.fromisoformat(p["sent_at"])).total_seconds() / 60
+               < PROPOSAL_TTL_MINS * 2
         ]
         after = len(pending["proposals"])
         if before != after:
