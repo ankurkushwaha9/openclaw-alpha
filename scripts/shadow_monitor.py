@@ -69,7 +69,10 @@ SKIP_PREFIXES = [
 
 def has_trading_keyword(text: str) -> bool:
     text_lower = text.lower()
-    words = re.findall(r'\b\w+\b', text_lower)
+    # Replace underscores with spaces before tokenizing so that
+    # callback IDs like PAPER_YES_123 correctly match 'paper' and 'yes'
+    normalized = text_lower.replace('_', ' ')
+    words = re.findall(r'\b[a-z]+\b', normalized)
     return bool(set(words) & TRADING_KEYWORDS)
 
 
@@ -184,6 +187,28 @@ def extract_text(content) -> str:
     return str(content)
 
 
+def strip_metadata_wrapper(text: str) -> str:
+    """
+    OpenClaw prepends every user message with:
+        Conversation info (untrusted metadata): ```json { ... } ```
+        [actual user message here]
+    Strip that header so we score the real Telegram message, not the wrapper.
+    """
+    marker = "```"
+    # Find the closing ``` of the JSON block
+    # Format is: "Conversation info...: ```json ... ``` \n\nActual message"
+    if text.startswith("Conversation info"):
+        # Find second occurrence of ``` (closes the json block)
+        first = text.find(marker)
+        if first != -1:
+            second = text.find(marker, first + 3)
+            if second != -1:
+                remainder = text[second + 3:].strip()
+                if remainder:
+                    return remainder
+    return text
+
+
 def should_skip(text: str) -> bool:
     return any(text.startswith(p) for p in SKIP_PREFIXES)
 
@@ -250,7 +275,7 @@ def watch_session(session_path: Path, start_offset: int = 0):
             if role == 'user':
                 text = extract_text(msg.get('content', ''))
                 if text and not should_skip(text):
-                    pending_user_text = text
+                    pending_user_text = strip_metadata_wrapper(text)
                     pending_ts = entry.get('timestamp', datetime.now(timezone.utc).isoformat())
 
             elif role == 'assistant' and pending_user_text:
