@@ -1,7 +1,5 @@
 name: Syntax Check
-
 on: [push, pull_request]
-
 jobs:
   syntax:
     runs-on: ubuntu-latest
@@ -22,4 +20,6 @@ jobs:
           python3 -m py_compile paper_trading/paper_signal_bridge.py
           python3 -m py_compile paper_trading/bridge_test.py
           python3 -m py_compile scripts/whale_tracker.py
+          python3 -m py_compile scripts/daily_monitor.py
+          python3 -m py_compile scripts/health_check.py
           echo "All files passed syntax check"

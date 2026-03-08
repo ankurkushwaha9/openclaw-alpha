@@ -437,6 +437,86 @@ def check_resolutions():
     else:
         print("  No new resolutions detected.")
 
+
+# --- PAPER POSITION AUTO-RESOLVE (added Mar 3 2026) --------------------------
+
+def check_paper_resolutions():
+    """
+    Check if any open PAPER positions have resolved using Gamma API.
+    Calls paper_engine.py resolve to close them and update scorecard.
+    """
+    if not os.path.exists(LEDGER_FILE):
+        print("check_paper_resolutions: ledger.json not found, skipping.")
+        return
+
+    with open(LEDGER_FILE, "r", encoding="utf-8") as f:
+        ledger = json.load(f)
+
+    open_positions = ledger.get("open_positions", [])
+    if not open_positions:
+        print("check_paper_resolutions: no open paper positions.")
+        return
+
+    print(f"check_paper_resolutions: checking {len(open_positions)} paper position(s)...")
+
+    VENV_PYTHON  = "/home/ubuntu/.openclaw/workspace/skills/polyclaw/.venv/bin/python"
+    ENGINE       = "/home/ubuntu/.openclaw/workspace/paper_trading/paper_engine.py"
+    POLYCLAW_DIR = "/home/ubuntu/.openclaw/workspace/skills/polyclaw"
+
+    for pos in open_positions:
+        market_id   = pos.get("market_id")
+        market_name = pos.get("market_name", "Unknown")
+        side        = pos.get("side", "YES")
+        pos_id      = pos.get("id")
+
+        print(f"  Checking paper: {market_name[:40]}...")
+
+        # Reuse get_market_status from check_resolutions
+        is_resolved, winner, yes_price = get_market_status(market_id)
+
+        if not is_resolved:
+            price_str = f"{int(yes_price*100)}c" if yes_price else "??"
+            print(f"    Still open. Current YES: {price_str}")
+            continue
+
+        # Resolved - determine WIN or LOSS
+        won        = (winner == side) if winner else False
+        result     = "WIN" if won else "LOSS"
+        exit_price = 1.0 if won else 0.0
+
+        print(f"    PAPER RESOLVED: {result} | winner={winner} | your side={side}")
+
+        # Call paper_engine.py resolve
+        import subprocess
+        cmd = [VENV_PYTHON, ENGINE, "resolve", pos_id, result, str(exit_price)]
+        try:
+            r = subprocess.run(
+                cmd, capture_output=True, text=True,
+                cwd="/home/ubuntu/.openclaw/workspace", timeout=30
+            )
+            if r.returncode == 0:
+                print(f"    paper_engine resolved: {r.stdout.strip()[:100]}")
+                # Send Telegram alert
+                entry_amt = float(pos.get("virtual_amount", 0))
+                entry_price = float(pos.get("entry_price", 0))
+                shares = entry_amt / entry_price if entry_price > 0 else 0
+                payout = round(shares, 2) if won else 0.0
+                profit = round(payout - entry_amt, 2)
+                profit_str = f"+${profit:.2f}" if profit >= 0 else f"-${abs(profit):.2f}"
+                alert = (
+                    f"[PAPER RESOLUTION]\n"
+                    f"Market: {market_name[:60]}\n"
+                    f"Your bet: {side} | Winner: {winner}\n"
+                    f"Result: {result}\n"
+                    f"Virtual P&L: {profit_str}\n"
+                    f"Scorecard updated."
+                )
+                send_telegram(alert)
+            else:
+                print(f"    paper_engine error: {r.stderr.strip()[:100]}")
+        except Exception as e:
+            print(f"    paper_engine exception: {e}")
+
 def main():
     load_env()
 
@@ -448,6 +528,9 @@ def main():
 
     print("\nChecking for resolutions (Fix-4)...")
     check_resolutions()
+
+    print("\nChecking paper position resolutions...")
+    check_paper_resolutions()
 
     print("\nBuilding paper money report...")
     paper_report = build_paper_report()

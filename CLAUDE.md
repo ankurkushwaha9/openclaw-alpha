@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-03 (v18.0 - YES/NO loop fixed + health check improved + Rojas removed)
+# Last Updated: 2026-03-08 (v24.0 - Day 1+2 complete, BUG-017/018 fixed, Day 3 GO)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -272,17 +272,29 @@ Dashboard: dashboard.uptimerobot.com/monitors/802403664
 
 ### Whale Tracker:
 Script: ~/.openclaw/workspace/scripts/whale_tracker.py
+Version: v5.2 (2026-03-07) -- 3-LLM consensus (Claude + Gemini + ChatGPT)
 API: https://data-api.polymarket.com (public, no auth)
 KEY FIX: Wallet field is proxyWallet (NOT transactorAddress or maker)
 
-Run: cd ~/.openclaw/workspace && source skills/polyclaw/.venv/bin/activate && python scripts/whale_tracker.py
+Run: cd ~/.openclaw/workspace && /home/ubuntu/.openclaw/workspace/polyclaw/.venv/bin/python3 scripts/whale_tracker.py
+Cron: 0 */2 * * * (every 2 hours -- upgrade to 30min is PENDING)
 
-Thresholds: $500 min trade | 60% min win rate
-Tier 1: >15% divergence - ACT (after Ankur YES)
-Tier 2: 8-15% divergence - QUEUE, monitor hourly
-Tier 3: <8% - IGNORE
+v5.2 Architecture (LIVE):
+- 4-STAGE EXPANSION: Tactical(1-7d $400) / Strategic(8-21d $1500) / Macro(22-45d $3500) / Extreme(46-75d $7000)
+- DYNAMIC DIVERGENCE V-SHAPE: 8%/6%/9%/11% by days_to_resolve (best signal zone = 8-21d at 6%)
+- MIN_LIQUIDITY = $10,000 (volume field broken in Gamma API -- use liquidity only)
+- MIN_IMPACT_RATIO = 0.003 (trade must be 0.3%+ of pool to count)
+- MANIPULATION GUARD: skip if trade > 50% of pool
+- SPORTS: included, +2% divergence premium, whale_min=$300
+- HARD CEILING: 75 days max horizon
+- BUG-015 FIX: outcome direction-adjusted (NO buy at 0.81 = implied YES of 0.19, not 0.81)
 
-Pending: Cron scheduling (add after Oscar resolution March 15)
+Tier signals:
+Tier 1: divergence >= threshold (dynamic) -- ACT (after Ankur YES)
+Tier 2: divergence >= threshold * 0.65 -- MONITOR
+Tier 0: below threshold -- IGNORE
+
+Category priority: Geopolitics > Economics > Entertainment > Sports > Politics > Crypto > Other
 
 ---
 
@@ -420,14 +432,6 @@ MEMORY.md, ALPHA_MEMORY.md, memory/YYYY-MM-DD.md, TRADING_LOG.md, FUTURE_TRADE_W
 - NEVER write RUNNING/ACTIVE status to MEMORY.md without a successful health check confirming it
 - If unsure which file: identity/preferences go in MEMORY.md, everything else goes in ALPHA_MEMORY.md
 
-### LIVE DATA RULES (STRICT - DO NOT VIOLATE)
-- NEVER answer questions about balance, positions, P&L, or trade history from memory
-- ALWAYS run: python3 /home/ubuntu/.openclaw/workspace/scripts/daily_monitor.py for live data
-- NEVER report a position as DISPUTED, PENDING, or OPEN if positions.json shows it resolved
-- NEVER self-generate portfolio tables from memory - always read from source files
-- Source of truth order: positions.json > ALPHA_MEMORY.md > memory (memory is last resort never first)
-- If script fails to run - say "I cannot get live data right now" not guess from memory
-
 End of session protocol:
 - Update ALPHA_MEMORY.md with key decisions
 - Add entry to memory/YYYY-MM-DD.md
@@ -441,6 +445,95 @@ End of session protocol:
 
 plans/trading.md, plans/alpharealm9-strategy.md, plans/content.md
 plans/integrations.md - Integration roadmap (unexplored - read before building)
+
+---
+
+## SMART ROUTER ACTIVATION PLAN (Mission 11 -- Approved 2026-03-07)
+
+### CURRENT STATUS
+Runtime: direct (ALL messages go to Kimi -- Smart Router NOT active yet)
+Goal: Activate Smart Router so Alpha routes by task complexity as designed
+
+### WHY THIS MATTERS
+Right now every message -- "hi" or "validate this whale signal" -- goes to Kimi K2.5.
+After activation: Gemma handles heartbeat/simple, Kimi handles standard ops,
+Claude Sonnet handles complex signal validation. The architecture finally works as designed.
+
+### 3-LLM CONSENSUS (Claude + ChatGPT + Gemini -- March 7 2026)
+All 3 agreed:
+- Gemma 2B = Heartbeat + non-trading tasks ONLY (hard floor, no exceptions)
+- Keyword bypass list MANDATORY -- score alone cannot be trusted for trading
+- MINI_CLAUDE.md must exist before activation (Gemma cannot handle full CLAUDE.md)
+- Fail-open to Kimi -- if router crashes, system continues on Kimi, never silent
+- Shadow mode 24h before full activation -- never flip switch cold
+- $5/week hard cap on Claude API spend
+
+### GEMMA 2B ROLE (CONFIRMED BY ANKUR)
+Gemma 2B is used for HEARTBEAT ONLY + non-trading simple tasks.
+NEVER routes trading, signals, proposals, balance, or financial decisions.
+
+### KEYWORD BYPASS LIST (Any of these = minimum Kimi, never Gemma)
+Trading core: trade, signal, whale, market, polymarket, price, position, kelly, buy, sell, entry, exit
+Paper trading: paper, proposal, approve, reject, yes, no, execute, skip, tier, divergence
+Portfolio: balance, ledger, pnl, profit, loss, exposure, portfolio, wallet, usdc, stake, bet
+Market specific: oscar, masters, fed, rate, bitcoin, eth, crypto, resolve, resolution
+System ops: cron, bridge, scan, tracker, engine, alert, scorecard
+
+### COST GUARDRAILS (Locked by Ankur)
+Weekly hard cap: $5.00
+Alert threshold: $4.50 (90%) -- Telegram alert fires
+At hard cap: fallback to Kimi only until week resets
+Claude Opus daily max: 2 calls/day
+/cost command: BOTH daily AND weekly spend visible
+
+### 3-DAY BUILD PLAN
+
+DAY 1 -- Preparation (zero risk to live system)
+- [x] Create MINI_CLAUDE.md (<800 tokens, Gemma context file)
+- [x] Add keyword bypass logic to smart-router/router-engine.js
+- [x] Add trading guardrail: if category=trading AND model=gemma -> reroute to Kimi
+- [x] Add model logging: every response logs which model answered
+- [x] Create scripts/cost_tracker.py (/cost daily + weekly command)
+- [x] Dry-run test: 30 sample messages, verify routing decisions
+- [x] Verify 0 trading messages route to Gemma in dry-run -- 30/30 PASS
+- [x] Backup openclaw.json -> openclaw.json.backup
+SUCCESS CRITERIA: Dry-run logs show correct routing. Zero trading tasks to Gemma.
+
+DAY 2 -- Shadow Mode (24 real hours -- router logs decisions but Kimi still answers)
+- [x] Shadow monitor live (shadow_monitor.py, PID active)
+- [x] Running -- 43+ entries in routing.log
+- [x] Reviewed -- BUG-017/018 found and fixed during QA
+- [x] Verified -- zero trading tasks to Gemma confirmed
+- [x] No latency impact -- shadow mode is read-only
+- [x] Ankur reviewed -- Day 2 QA PASS
+SUCCESS CRITERIA: Healthy routing distribution. Zero trading misroutes.
+
+DAY 3 -- Full Activation
+- [ ] Run node smart-router/openclaw-integration.js install
+- [ ] Restart openclaw-gateway
+- [ ] Verify /status shows Runtime: smart-router (not Runtime: direct)
+- [ ] Send 5 test messages via Telegram, verify correct routing
+- [ ] Monitor 4 hours -- Ankur on-call
+- [ ] Verify /cost command works (daily + weekly)
+- [ ] Update CLAUDE.md to v24.0
+- [ ] Push all changes to GitHub
+SUCCESS CRITERIA: /status shows smart-router. Test messages route correctly.
+
+### FILES TO CREATE/MODIFY
+smart-router/MINI_CLAUDE.md    -- CREATE (Day 1)
+smart-router/router-engine.js  -- MODIFY: keyword bypass + guardrail + logging (Day 1)
+scripts/cost_tracker.py        -- CREATE: /cost daily+weekly command (Day 1)
+openclaw.json                  -- MODIFY via integration script (Day 3)
+CLAUDE.md                      -- UPDATE to v24.0 (Day 3)
+
+### SESSION HANDOFF INSTRUCTIONS
+If starting a new chat session to continue this work:
+1. Run the standard orient command:
+   cat CLAUDE.md && echo "---BUGS---" && cat BUGS.md && echo "---GIT---" && git log --oneline -10
+2. Tell new session: "Continue Mission 11 Smart Router -- start Day X"
+3. New session reads this section and knows exactly where to resume
+
+---
 
 ---
 
@@ -518,6 +611,12 @@ Master Lessons:
 - Teyana (Best Supporting) down 25% from entry (70c->52c) as of Feb 24 - watch closely
 - Bridge pending_proposals.json may be legacy list format - always normalise to dict on load
 - bridge.log grew to 273KB because log() did print()+file write AND cron did >> redirect = 2x per call
+- BUG-015: Whale outcome direction matters -- NO buy at 0.81 means implied YES=0.19, not 0.81. Always check outcome field
+- BUG-016: getUpdates is destructive -- any process sharing bot token steals messages. Use inline keyboard (callback_query) for approvals
+- BUG-017: OpenClaw wraps every user message with metadata header. Always strip Conversation info wrapper before scoring. Added strip_metadata_wrapper() to shadow_monitor.py
+- BUG-018: Underscore callback IDs like PAPER_YES_123 bypass word-boundary regex. Normalize underscores to spaces before tokenizing in keyword detection
+- Inline keyboard buttons (callback_query) are architecturally invisible to n8n -- safe approval channel
+- CLAUDE.md is the sync document for YOU, ALPHA BOT, and ANKUR -- update it every session
 - Never mix stdout cron redirect (>>) AND internal file writes in same script - pick one
 - market-monitor.js crashed Feb 16 on Web3 constructor error (Node v24) - silent failure for 2 weeks
 - A crashed monitor = invisible blind spots - health check says OK but data is stale underneath
@@ -582,6 +681,48 @@ Mission 9 IN PROGRESS: System Reconciliation + Bug Fixes - Mar 1, 2026
      Added check_yes_no_loop() - verifies bridge calls paper_propose.py
      Will now catch if YES/NO loop breaks again
      Old health check said ALL SYSTEMS OK while core feature was broken
+  -> FULL SYSTEM AUDIT (Mar 3 2026) - 3 issues found and fixed:
+     ISSUE 1: Stale sent proposal in pending_proposals.json (117 mins old) - cleaned
+     ISSUE 2: Paper Oscar position had no auto-resolve - fixed with check_paper_resolutions()
+     ISSUE 3: Git workflow broken - was committing directly to master - fixed back to dev->master
+  -> check_paper_resolutions() added to daily_monitor.py (Mar 3 2026)
+     Checks open paper positions against Gamma API daily at 9am
+     Auto-calls paper_engine.py resolve on March 15 when Oscars resolve
+     Sends Telegram alert with virtual P&L and scorecard update
+  -> BUG-011/012/013 FIXED (Mar 04 2026): Duplicate guard broken - same market repeated every 2h
+     ROOT CAUSE: guard_duplicate only blocked status=sent within 30min TTL
+     After 30min timeout, proposal age exceeded TTL, guard PASSED same market again
+     Every 2h scan: same market proposed → 5 daily slots burned on one market → no new signals
+     FIX 1: Added DUPLICATE_BLOCK_HOURS=24 - any proposal blocks market for 24h regardless of status
+     FIX 2: Proposal status now correctly recorded: approved/rejected/expired from paper_propose stdout
+     FIX 3: Daily cap raised from 5 to 10 for testing phase
+     FIX 4: Cleared stale PH Colombian market from pending_proposals.json
+     ARCHITECTURAL LESSON: Status lifecycle must be complete end-to-end
+       sent → approved/rejected/expired (not stuck at sent forever)
+  -> BUG-011/012/013 FIXED (Mar 04 2026): Duplicate guard broken - same market repeated every 2h
+     ROOT CAUSE: guard_duplicate only blocked status=sent within 30min TTL
+     After 30min timeout, proposal age exceeded TTL, guard PASSED same market again
+     Every 2h scan: same market proposed, 5 daily slots burned on one market, no new signals reach user
+     FIX 1: Added DUPLICATE_BLOCK_HOURS=24 - any proposal blocks market for 24h regardless of status
+     FIX 2: Proposal status now correctly recorded: approved/rejected/expired from paper_propose stdout
+     FIX 3: Daily cap raised from 5 to 10 for testing phase
+     FIX 4: Cleared stale PH Colombian market from pending_proposals.json
+     ARCHITECTURAL LESSON: Status lifecycle must be complete end-to-end
+     sent -> approved/rejected/expired (never stuck at sent forever)
+  -> BUG-014 FIXED (Mar 04 2026): n8n consuming Telegram YES/NO before paper_propose.py
+     ROOT CAUSE: n8n long-polls same Telegram bot token, grabs messages first
+     paper_propose.py short-polls, arrives after message already consumed by n8n
+     FIX: Use PAPER YES / PAPER NO prefix - n8n ignores it, paper_propose catches it
+     HOW TO REPLY: Always use "PAPER YES" or "PAPER NO" in Telegram for paper trades
+     Plain YES/NO still work as fallback but PAPER prefix is required for reliability
+  -> n8n IS RUNNING on EC2 (PID ~1350) - do not kill it, needed for future workflows
+     Shares same Telegram bot token - any new feature using Telegram must use unique prefix
+     ARCHITECTURAL RULE: Always check ps aux for ALL processes before assuming exclusive access
+  -> GIT WORKFLOW RULE (STRICT - DO NOT VIOLATE):
+     ALWAYS commit to dev branch first
+     NEVER commit directly to master
+     Only merge dev->master after testing confirms everything works
+     Master = production, dev = experiments/fixes
   -> TO-DO LIST (carry forward every session):
      - Rotate Composio API key at composio.dev (low urgency - key never exposed publicly)
      - Oscar exit plan: positions resolve March 15 - monitor prices, have exit strategy ready
