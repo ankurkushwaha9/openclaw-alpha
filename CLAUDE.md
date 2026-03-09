@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-08 (v24.0 - Day 1+2 complete, BUG-017/018 fixed, Day 3 GO)
+# Last Updated: 2026-03-09 (v25.0 - Day 3 COMPLETE, Smart Router proxy active on port 8081)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -1494,3 +1494,80 @@ Always verify Composio connections via:
   curl https://backend.composio.dev/api/v1/connectedAccounts
   with x-api-key header from .env COMPOSIO_API_KEY
 Do NOT trust bot's self-reported Composio state without live verification.
+
+---
+
+## SMART ROUTER - DAY 3 COMPLETE (2026-03-09)
+
+### STATUS: ACTIVE ✅
+Architecture: Proxy Layer (OpenAI-compatible server on port 8081)
+Service: smart-router-proxy.service (systemd user service, auto-starts)
+Config: openclaw.json primary = "smart-router/smart-router" -> http://127.0.0.1:8081/v1
+
+### HOW IT WORKS
+OpenClaw thinks it talks to one model endpoint (smart-router provider).
+proxy-server.js intercepts every request, scores complexity, routes to real model.
+Zero openclaw.json schema violations -- all standard keys only.
+
+### ROUTING RULES
+Score 0-30    → Gemma 2B (local Ollama, port 11434, FREE)
+Score 31-70   → Kimi K2.5 (NVIDIA NIM, FREE)
+Score 71-100  → Claude Sonnet (paid, use sparingly)
+Trading keywords → Always Kimi (GUARDRAIL -- never Gemma for trading)
+Any model crash → Fallback to Kimi (fail-safe)
+
+### KEY FILES
+smart-router/proxy-server.js          - Main proxy (341 lines)
+~/.config/systemd/user/smart-router-proxy.service - Systemd service
+logs/proxy-routing.log                - Every routing decision logged
+
+### SERVICE COMMANDS
+systemctl --user status smart-router-proxy.service  - Check status
+systemctl --user restart smart-router-proxy.service - Restart proxy
+journalctl --user -u smart-router-proxy.service -f  - Live logs
+
+### BUG-019 RESOLVED
+Problem: openclaw-integration.js tried adding unknown keys (smartRouter, routing, thresholds)
+         OpenClaw strict schema validator rejected them -> crash on startup
+Solution: Proxy architecture -- zero custom keys in openclaw.json
+          Added "smart-router" as a standard provider block (valid schema)
+
+
+
+---
+
+## SMART ROUTER - DAY 3 COMPLETE (2026-03-09)
+
+### STATUS: ACTIVE
+Architecture: Proxy Layer (OpenAI-compatible server on port 8081)
+Service: smart-router-proxy.service (systemd user service, auto-starts)
+Config: openclaw.json primary = "smart-router/smart-router" -> http://127.0.0.1:8081/v1
+
+### HOW IT WORKS
+OpenClaw thinks it talks to one model endpoint (smart-router provider).
+proxy-server.js intercepts every request, scores complexity, routes to real model.
+Zero openclaw.json schema violations -- all standard keys only.
+
+### ROUTING RULES
+Score 0-30    -> Gemma 2B (local Ollama, port 11434, FREE)
+Score 31-70   -> Kimi K2.5 (NVIDIA NIM, FREE)
+Score 71-100  -> Claude Sonnet (paid, use sparingly)
+Trading keywords -> Always Kimi (GUARDRAIL -- never Gemma for trading)
+Any model crash  -> Fallback to Kimi (fail-safe)
+
+### KEY FILES
+smart-router/proxy-server.js          - Main proxy (341 lines)
+~/.config/systemd/user/smart-router-proxy.service - Systemd service
+logs/proxy-routing.log                - Every routing decision logged
+
+### SERVICE COMMANDS
+systemctl --user status smart-router-proxy.service  - Check status
+systemctl --user restart smart-router-proxy.service - Restart proxy
+journalctl --user -u smart-router-proxy.service -f  - Live logs
+
+### BUG-019 RESOLVED
+Problem: openclaw-integration.js tried adding unknown keys (smartRouter, routing, thresholds)
+         OpenClaw strict schema validator rejected them -> crash on startup
+Solution: Proxy architecture -- zero custom keys in openclaw.json
+          Added "smart-router" as a standard provider block (valid schema)
+

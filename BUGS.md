@@ -770,3 +770,26 @@ Any keyword detection that may encounter underscore-joined identifiers (callback
 snake_case variable names, etc.) must normalize underscores to spaces before tokenizing.
 Word-boundary regex alone is not sufficient.
 
+
+## BUG-019 - OpenClaw Strict Schema Rejects Smart Router Config Keys
+- Date: 2026-03-09
+- Status: RESOLVED
+- Component: smart-router/openclaw-integration.js + openclaw.json
+- Symptom: Bot crashed on startup after install script ran. Error:
+    "Config invalid: agents.defaults.model: Unrecognized keys: routing, thresholds
+     <root>: Unrecognized key: smartRouter"
+- Root Cause: openclaw-integration.js tried to inject 3 unknown keys into openclaw.json.
+  OpenClaw has a strict Zod schema validator that rejects ANY unknown key at startup.
+- Failed Fix: openclaw doctor --fix did NOT remove the injected keys.
+  openclaw.json.backup was already overwritten with broken config.
+- Resolution: Redesigned entire Day 3 approach.
+  Instead of modifying openclaw.json config, deployed proxy-server.js as a local
+  OpenAI-compatible HTTP server on port 8081. OpenClaw uses a standard "smart-router"
+  provider block (valid schema) pointing to http://127.0.0.1:8081/v1.
+  Proxy intercepts requests, scores complexity, routes to Gemma/Kimi/Sonnet.
+  Zero unknown keys. Zero schema violations.
+- Files Changed:
+  smart-router/proxy-server.js (NEW - 341 lines)
+  openclaw.json (smart-router provider block added -- valid schema)
+  ~/.config/systemd/user/smart-router-proxy.service (NEW - auto-start service)
+- WARNING: openclaw.json.backup contains the broken smart-router config -- DO NOT USE TO RESTORE
