@@ -770,3 +770,149 @@ Any keyword detection that may encounter underscore-joined identifiers (callback
 snake_case variable names, etc.) must normalize underscores to spaces before tokenizing.
 Word-boundary regex alone is not sufficient.
 
+
+## BUG-019 - OpenClaw Strict Schema Rejects Smart Router Config Keys
+- Date: 2026-03-09
+- Status: RESOLVED
+- Component: smart-router/openclaw-integration.js + openclaw.json
+- Symptom: Bot crashed on startup after install script ran. Error:
+    "Config invalid: agents.defaults.model: Unrecognized keys: routing, thresholds
+     <root>: Unrecognized key: smartRouter"
+- Root Cause: openclaw-integration.js tried to inject 3 unknown keys into openclaw.json.
+  OpenClaw has a strict Zod schema validator that rejects ANY unknown key at startup.
+- Failed Fix: openclaw doctor --fix did NOT remove the injected keys.
+  openclaw.json.backup was already overwritten with broken config.
+- Resolution: Redesigned entire Day 3 approach.
+  Instead of modifying openclaw.json config, deployed proxy-server.js as a local
+  OpenAI-compatible HTTP server on port 8081. OpenClaw uses a standard "smart-router"
+  provider block (valid schema) pointing to http://127.0.0.1:8081/v1.
+  Proxy intercepts requests, scores complexity, routes to Gemma/Kimi/Sonnet.
+  Zero unknown keys. Zero schema violations.
+- Files Changed:
+  smart-router/proxy-server.js (NEW - 341 lines)
+  openclaw.json (smart-router provider block added -- valid schema)
+  ~/.config/systemd/user/smart-router-proxy.service (NEW - auto-start service)
+- WARNING: openclaw.json.backup contains the broken smart-router config -- DO NOT USE TO RESTORE
+
+## BUG-020 - Smart Router Proxy: Gemma Latency Causes OpenClaw Timeout
+- Date: 2026-03-09
+- Status: OPEN - Smart Router disabled, reverted to Kimi direct
+- Component: smart-router/proxy-server.js + Gemma 2B (Ollama)
+- Symptom: Bot stops responding to Telegram messages after Smart Router activated.
+  Messages show as delivered (double tick) but bot never replies.
+- Root Cause Analysis:
+  1. "Hello" (score=0) routes to Gemma 2B via Ollama on port 11434
+  2. Gemma 2B is cold/slow -- first call takes 35-40 seconds
+  3. proxy-server.js originally had 30s Gemma timeout -- whole proxy hangs
+  4. Even after reducing to 5s timeout, Gemma fails -> falls to Kimi
+  5. Kimi via NVIDIA NIM takes additional 10-15s after Gemma failure
+  6. Total latency: 15-40 seconds per message
+  7. OpenClaw appears to have its own internal timeout shorter than this
+  8. OpenClaw drops the response -> bot appears silent
+- What Was Tried:
+  * Reduced Gemma timeout from 30s to 5s (partial fix -- still total 15s)
+  * Disabled Gemma routing entirely (all -> Kimi) -- still 15s too slow
+- Current State: openclaw.json reverted to nvidia-nim/moonshotai/kimi-k2.5 direct
+  Smart Router service still running but not being used
+- Fix Options (in order of preference):
+  Option A: Pre-warm Gemma on startup -- send a dummy request to Ollama when
+            proxy-server.js starts so first real request is fast (<2s)
+  Option B: Increase OpenClaw timeout -- investigate openclaw.json timeout settings
+            (compaction.reserveTokensFloor exists, check if request timeout configurable)
+  Option C: Remove Gemma entirely from routing -- use only Kimi (free) and Sonnet (paid)
+            Simpler 2-tier routing: score<70 -> Kimi, score>=70 -> Sonnet
+  Option D: Use Gemma only for truly non-interactive tasks (cron jobs, background scans)
+            Never route real-time Telegram messages to Gemma
+- Recommended Fix: Option A (pre-warm) + Option D (no Gemma for Telegram)
+  Pre-warm on startup: add to proxy-server.js startup sequence
+  Gemma for background only: heartbeat, cron scan summaries -- never Telegram replies
+- Files to Change:
+  smart-router/proxy-server.js -- add Gemma pre-warm on startup + routing rule change
+  openclaw.json -- re-enable smart-router/smart-router as primary after fix confirmed
+
+---
+
+## BUG-021 — whale_tracker.py missing /events endpoint — Geopolitics markets invisible
+
+- Status: OPEN
+- Priority: HIGH
+- Discovered: 2026-03-09 (Session: Impact analysis + Polymarket screenshot comparison)
+- Affected File: scripts/whale_tracker.py (v5.2)
+
+- Symptom:
+  Whale tracker scans 500 markets per run but misses ALL major Iran/geopolitics markets.
+  Polymarket screenshot confirmed $26M+ volume markets (Iranian regime fall, US x Iran
+  ceasefire, Hormuz) are completely absent from scan output.
+
+- Root Cause:
+  whale_tracker.py fetches markets exclusively from:
+    GET https://gamma-api.polymarket.com/markets
+  Polymarket's largest geopolitics markets are structured as EVENTS with multiple dated
+  outcomes (e.g., "US x Iran ceasefire by March 15?", "...by March 31?", "...by June 30?")
+  and are ONLY accessible via:
+    GET https://gamma-api.polymarket.com/events
+  The /events endpoint returns nested structure: event.markets[] array.
+  These sub-markets NEVER appear in the flat /markets endpoint response.
+
+- Confirmed Missing Markets (from screenshot, all invisible to tracker):
+  * Will the Iranian regime fall by March 31? -- $26.6M vol, $938K liq, 21d
+  * Will Iran close the Strait of Hormuz by March 31? -- $21.8M vol, $581K liq, 22d
+  * US x Iran ceasefire by March 15? -- $4.7M vol, $184K liq, ~6d
+  * US x Iran ceasefire by March 31? -- $3.9M vol, $143K liq, ~22d
+  * Iranian regime fall by June 30? -- $11.9M vol, $709K liq, 112d
+  * Iranian regime fall by April 30? -- $1.5M vol, $397K liq, 51d
+
+- Schema Verification (2026-03-09):
+  Event sub-market fields are IDENTICAL to /markets fields. Pipeline-compatible:
+  conditionId, endDate, endDateIso, outcomePrices, liquidity, liquidityNum,
+  negRisk, clobTokenIds, acceptingOrders, active, closed -- all present, same format.
+
+- Trade History Verification (2026-03-09):
+  DATA_API /trades endpoint confirmed working for sub-markets.
+  Fields available for Phase 2 accumulation clustering:
+    proxyWallet -- wallet address (clustering key)
+    timestamp   -- unix epoch integer (window math ready)
+    outcome     -- "Yes" / "No" (direction consistency check)
+    side        -- "BUY" / "SELL"
+    size        -- USDC amount directly (NOT token units -- confirmed)
+    price       -- float 0-1
+    conditionId -- market identifier
+  Wallet clustering observed in real data:
+    0x3f049e... -- 30 trades, 48min span, $1,972 total, all YES (classic accumulation)
+    0x48f979... -- 3 trades, 1.8min span, $932 total, all YES
+
+- 3-LLM Brainstorm (Claude + Gemini + ChatGPT) Consensus:
+  Architecture: Option B -- parallel fetch both endpoints, merge by conditionId
+  Priority rules:
+    /markets wins on price/liquidity if conditionId in both (closer to CLOB truth)
+    Use max(events_liq, markets_liq) for liquidity field
+  Guards to add:
+    negRisk=True      -> skip (Gemini)
+    acceptingOrders=False -> skip / phantom market (ChatGPT)
+    endDate=null      -> days=999, Stage 4 Open Horizon, raise min_liq to 25k (ChatGPT)
+  Two additional upgrades identified (separate phases):
+    Phase 2: Whale accumulation clustering (30min window, 3+ trades, $900 min)
+    Phase 3: Liquidity shock detection (persistent state between cron runs)
+
+- Fix Plan (3 phases):
+  PHASE 1 (events fix -- build next session):
+    1. Add fetch_events() function: GET /events paginated, flatten markets[]
+    2. Merge with existing fetch_markets() by conditionId
+    3. Add negRisk + acceptingOrders + endDate=null guards
+    4. Attach parent_event_title to each sub-market for context
+    5. All else unchanged (signal calc, thresholds, Telegram format)
+
+  PHASE 2 (accumulation clustering -- after Phase 1 stable):
+    1. Group trades by (proxyWallet, conditionId, outcome) within 30min window
+    2. Signal if total >= $900 AND trades >= 3 AND direction consistent
+    3. New Telegram label: "Whale Accumulation" vs "Whale Single Trade"
+
+  PHASE 3 (liquidity shock -- after Phase 2 stable):
+    1. New file: paper_trading/liquidity_history.json (persists between cron runs)
+    2. Read on startup, compare current vs stored, write updated each scan
+    3. Shock = -20%+ liquidity within last scan window
+    4. Combined signal: shock + cluster + divergence = EXTREME tier
+
+- Related:
+  STAGE3_TRIGGER fix (2026-03-09, commit 44f0d19) -- lowers stage escalation threshold
+  but does NOT fix the root cause (still only scanning /markets endpoint)
