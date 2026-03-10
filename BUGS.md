@@ -1102,3 +1102,35 @@ Word-boundary regex alone is not sufficient.
 - Action Required:
   Ankur must apply Option A manually in n8n UI (cannot be done via EC2 code).
   URL: http://[EC2_IP]:5678 -> Telegram workflow -> add IF filter node
+
+---
+
+## BUG-024 - Ghost Trade Counter in Ledger Stats
+
+- Status: FIXED
+- Priority: LOW (cosmetic, no financial impact)
+- Discovered: 2026-03-10
+- Fixed: 2026-03-10
+- Affected File: paper_trading/ledger.json
+
+- Symptom:
+  stats.total_trades = 5
+  But open_positions = 4, resolved_positions = 0
+  Math: 4 + 0 = 4, not 5. One ghost trade in the counter.
+
+- Root Cause:
+  Rojas Texas Abortion Case trade was manually removed from open_positions
+  at some point (likely during a ledger reset or manual cleanup).
+  The stats.total_trades counter was never decremented.
+  Balance and positions were both correct -- only the stats counter was wrong.
+
+- Why It Matters:
+  win_rate = wins / total_trades
+  Ghost trade inflates denominator: 1/5 = 20% instead of correct 1/4 = 25%
+  This directly affects the Go-Live Scorecard accuracy.
+  Oscar positions resolve March 15 -- fixed before resolution week.
+
+- Fix Applied:
+  ledger.json stats.total_trades: 5 -> 4
+  ledger.json proposals.total: 4 -> 4 (already correct, confirmed)
+  virtual_balance: $41.29 (UNCHANGED -- no financial impact)
