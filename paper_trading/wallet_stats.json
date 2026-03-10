@@ -1,0 +1,13 @@
+{
+  "0xc86982ed6e5764df56ca4ef1bb730cd7448bc832": {
+    "trades": 1,
+    "wins": 1,
+    "losses": 0,
+    "accuracy": 1.0,
+    "total_move": 0.9414,
+    "avg_move_after_trade": 0.9414,
+    "score": 0.0,
+    "tier": "unknown",
+    "last_seen": "2026-03-10T04:56:30.189214+00:00"
+  }
+}
