@@ -1667,10 +1667,13 @@ Telegram format upgrade:
   Follow-up Trades: 4 buys totaling $1,040
   Signal Level: EXTREME
 
-### PHASE 4 -- Future (ChatGPT teased, not yet revealed)
-ChatGPT mentioned a "third upgrade used by serious prediction-market traders
-that detects insider trading patterns before the news breaks."
-Ask ChatGPT for Phase 4 details after Phase 3 is stable.
+### PHASE 4 -- Informed Wallet Detection
+Status: COMPLETE -- commit a5b63ad (2026-03-10)
+Files: paper_trading/wallet_stats.json + pending_wallet_evals.json
+Eval delay: 6h | Min trades: 5 | Smart: 0.65 | Elite: 0.80
+Score = accuracy*0.6 + avg_move*0.3 + sample_weight*0.1
+Boost: smart -> T2->T1/T1->EXTREME | elite -> EXTREME++ | market_maker -> suppressed
+Telegram: elite=ELITE WALLET DETECTED, smart=SMART WALLET DETECTED with stats block
 
 ---
 
@@ -1702,8 +1705,8 @@ Priority: LOW
   [ ] n8n: first workflow build
   [ ] Whale tracker: add /series endpoint scan (Layer 1 above /events -- future scope)
   [ ] Multi-wallet accumulation detection (Phase 4+ whale tracker)
-  [ ] Wallet reputation tracking (known smart wallet weighting)
-  [ ] ChatGPT Phase 4 insider trading pattern detection (ask after Phase 3)
+  [x] Wallet reputation tracking -- DONE commit a5b63ad (v6.3)
+  [x] ChatGPT Phase 4 insider trading pattern detection -- DONE commit a5b63ad (v6.3)
 
 Completed This Session (2026-03-09):
   [x] STAGE3_TRIGGER: 3->1 (commit 44f0d19) -- Stage 2 now scans single-market stages
