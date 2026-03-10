@@ -916,3 +916,49 @@ Word-boundary regex alone is not sufficient.
 - Related:
   STAGE3_TRIGGER fix (2026-03-09, commit 44f0d19) -- lowers stage escalation threshold
   but does NOT fix the root cause (still only scanning /markets endpoint)
+
+- Resolution (All 4 Phases COMPLETE -- 2026-03-10):
+
+  PHASE 1 ✅ DONE (commit 737b3c0 -> 3c4217c, v6.0):
+    * fetch_events(): GET /events paginated (1000 events -> 13,533 sub-markets flattened)
+    * merge_market_sources(): /markets canonical, /events adds new markets by conditionId
+    * max(events_liq, markets_liq) for liquidity accuracy
+    * 3 guards: negRisk=True skip, acceptingOrders=False skip, outcomePrices=null skip
+    * endDate=null -> days=999, min_liq=$25k, whale_min=$5k (Open Horizon tier)
+    * _parent_event_title enrichment for context in signals
+    * Live test confirmed: 13,033 new markets from /events visible
+    * Iran geopolitics markets detected in first scan ✅
+    * Hotfix 3c4217c: CATEGORY_PRIORITY/get typo -> .get (slash vs dot)
+
+  PHASE 2 ✅ DONE (commit 48e5e9e, v6.1):
+    * find_whale_clusters(): groups trades by proxyWallet within 30min window
+    * Fires when: >= 3 trades, >= $900 USDC total, direction consistent (all YES or all NO)
+    * Manipulation guard carried over from single-trade detection
+    * One cluster per wallet per market (break after first qualifying window)
+    * Label: "Whale Accumulation" vs "Whale Single Trade"
+    * Live test: Hamas disarm -- 7tx/18min/$1,220/all-No -> TIER 1 ACCUM ✅
+
+  PHASE 3 ✅ DONE (commit a6f60b8, v6.2):
+    * load/save_liquidity_history(): atomic write to paper_trading/liquidity_history.json
+    * check_liquidity_shock(): -20%+ drop = shock flag, (False, 0, 0) on first run
+    * Shock persisted between cron runs -- 54 snapshots confirmed in file
+    * EXTREME tier: shock + cluster + Tier 1 divergence together
+    * Telegram format: "PRE-WHALE SETUP DETECTED" with liq change line
+    * Live test: -25.9% faked shocks on Russia/Ukraine detected correctly ✅
+
+  PHASE 4 ✅ DONE (commit a5b63ad, v6.3):
+    * Informed wallet detection -- tracks wallet accuracy across market resolutions
+    * load/save_wallet_stats(): paper_trading/wallet_stats.json (persists)
+    * load/save_pending_evals(): paper_trading/pending_wallet_evals.json
+    * process_pending_evals(): scores wallets after market resolution
+    * Wallet tiers: unknown -> known -> smart (>=65% acc) -> elite (>=80% acc) -> market_maker
+    * boost_signal_tier(): elite upgrades dead signal to T1, smart upgrades T2->T1/T1->EXTREME
+    * market_maker tier: SUPPRESSES signal (noise filter)
+    * Telegram labels: "ELITE WALLET DETECTED" / "SMART WALLET DETECTED"
+    * boosted_tier added to whale_signals.json output
+    * Live test: wallet_stats.json populated, pending_evals.json tracking ✅
+
+  Final result: whale_tracker.py v6.3
+    Detection coverage: ~10% (v5.2) -> ~50-70% estimated (v6.3)
+    Markets visible: 500 (/markets only) -> 13,533+ (merged /markets + /events)
+    Signal quality: single threshold -> 4-layer scoring (divergence + cluster + shock + wallet)
