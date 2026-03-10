@@ -353,7 +353,7 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
         print(f"\n[>] Stage {stage_used} {cfg['label']} | {cfg['min_days']}-{cfg['max_days']}d + {null_count} Open Horizon | WhaleMin: dynamic | Div: V-shape")
 
     if not target_market_id:
-        markets.sort(key=lambda m: CATEGORY_PRIORITY/get(m.get("_category","other"), 99))
+        markets.sort(key=lambda m: CATEGORY_PRIORITY.get(m.get("_category","other"), 99))
 
     print(f"\n[>] Scanning {len(markets)} markets...\n")
     SKIP_THRESHOLD = 0.05
