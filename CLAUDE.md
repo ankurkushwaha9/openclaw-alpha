@@ -1623,8 +1623,8 @@ Schema verified fields (event sub-markets identical to /markets):
   negRisk, clobTokenIds, acceptingOrders, active, closed -- all present, same format
 
 ### PHASE 2 -- Whale Accumulation Clustering (ChatGPT upgrade #1)
-Status: READY TO DESIGN (trade field verification complete)
-Build after Phase 1 is stable and tested.
+Status: COMPLETE -- commit 48e5e9e (2026-03-10)
+Live tested: 7 clusters detected in Stage 2 scan. Hamas/disarm Tier 1 ACCUM signal fired.
 Expected detection improvement: 10% -> 30-50% of real whale activity
 
 Trade fields confirmed available for clustering:
@@ -1677,14 +1677,14 @@ Ask ChatGPT for Phase 4 details after Phase 3 is stable.
 ## PENDING WORK -- MASTER TASK LIST (Updated 2026-03-09)
 
 Priority: CRITICAL
-  [ ] BUG-021 Phase 1: Add /events endpoint to whale_tracker.py (schema verified, ready to build)
+  [x] BUG-021 Phase 1: Add /events endpoint to whale_tracker.py -- DONE commit 737b3c0 (v6.0)
   [ ] Oscar positions resolve March 15 -- monitor real + paper positions daily until then
       Real: OBAA 74c entry | Chalamet 79c entry | Teyana 70c entry
       Paper: OBAA $8 virtual | Scheffler Masters $10 virtual
 
 Priority: HIGH
-  [ ] BUG-021 Phase 2: Whale accumulation clustering (build after Phase 1 stable)
-  [ ] BUG-021 Phase 3: Liquidity shock detection (build after Phase 2 stable)
+  [x] BUG-021 Phase 2: Whale accumulation clustering -- DONE commit 48e5e9e (v6.1)
+  [ ] BUG-021 Phase 3: Liquidity shock detection (NEXT -- build after Phase 2 stable)
   [ ] Smart Router DAY 3: Full activation (proxy architecture -- BUG-020 timeout issue blocks this)
       Options: A+D (pre-warm Gemma, never route Telegram to Gemma)
                OR native OpenClaw skill system (correct long-term approach, no timeout)
