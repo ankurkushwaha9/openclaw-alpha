@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 whale_tracker.py - Polymarket Whale Signal Detection
-Last Updated: 2026-03-10 (v6.2 - Phase 3: liquidity shock detection + EXTREME tier)
+Last Updated: 2026-03-10 (v6.3 - Phase 4: informed wallet detection + smart/elite tiers)
 
 Changes v5.2 -> v6.0:
   BUG-021 FIX: Now fetches BOTH /markets AND /events endpoints in parallel.
@@ -60,6 +60,17 @@ MIN_CLUSTER_TOTAL     = 900    # USDC
 # Phase 3 -- Liquidity Shock Detection
 LIQUIDITY_SHOCK_PCT    = 0.20  # 20% drop from last scan triggers shock flag
 LIQUIDITY_HISTORY_FILE = os.path.join(os.path.dirname(__file__), '..', 'paper_trading', 'liquidity_history.json')
+
+# Phase 4 -- Informed Wallet Detection
+EVAL_DELAY_HOURS      = 6      # hours after trade to evaluate price movement
+MIN_TRADES_SCORING    = 5      # minimum trades before wallet gets a reputation score
+SMART_WALLET_SCORE    = 0.65   # score threshold for Smart Wallet tier
+ELITE_WALLET_SCORE    = 0.80   # score threshold for Elite Wallet tier
+MIN_PRICE_MOVE        = 0.04   # minimum price move to count as meaningful win
+MM_MIN_TRADES         = 50     # market maker detection: trade count threshold
+MM_MAX_ACCURACY       = 0.55   # market maker detection: accuracy ceiling
+WALLET_STATS_FILE     = os.path.join(os.path.dirname(__file__), '..', 'paper_trading', 'wallet_stats.json')
+PENDING_EVALS_FILE    = os.path.join(os.path.dirname(__file__), '..', 'paper_trading', 'pending_wallet_evals.json')
 
 STAGE_CONFIG = {
     1: {"min_days": 1,  "max_days": 7,  "whale_min": 400,  "label": "TACTICAL"},
@@ -390,6 +401,177 @@ def check_liquidity_shock(cid, current_liq, history):
     return False, prev, drop_pct
 
 
+# ── Phase 4: Wallet Intelligence ─────────────────────────────────────────────
+
+def load_wallet_stats():
+    """Load persistent wallet reputation database."""
+    try:
+        with open(WALLET_STATS_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_wallet_stats(stats):
+    """Atomically persist wallet reputation database."""
+    try:
+        tmp = WALLET_STATS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(stats, f, indent=2)
+        import os as _os; _os.replace(tmp, WALLET_STATS_FILE)
+    except Exception as e:
+        print(f"  [x] Wallet stats save failed: {e}")
+
+def load_pending_evals():
+    """Load queue of trades awaiting 6h price-movement evaluation."""
+    try:
+        with open(PENDING_EVALS_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+def save_pending_evals(evals):
+    """Atomically persist pending evaluation queue."""
+    try:
+        tmp = PENDING_EVALS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(evals, f, indent=2)
+        import os as _os; _os.replace(tmp, PENDING_EVALS_FILE)
+    except Exception as e:
+        print(f"  [x] Pending evals save failed: {e}")
+
+def fetch_current_yes_price(cid):
+    """Fetch current YES price for a market conditionId (used by eval engine)."""
+    try:
+        resp = requests.get(f"{GAMMA_API}/markets", params={"conditionIds": cid}, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list) and data:
+            prices = data[0].get("outcomePrices", "")
+            return float(json.loads(prices)[0]) if prices else None
+        elif isinstance(data, dict):
+            prices = data.get("outcomePrices", "")
+            return float(json.loads(prices)[0]) if prices else None
+    except Exception:
+        pass
+    return None
+
+def process_pending_evals(pending, wallet_stats, now):
+    """
+    Phase 4: Evaluate trades whose eval_at time has passed.
+    Updates wallet_stats in place. Returns remaining (not yet due) evals.
+    """
+    from datetime import datetime, timezone
+    still_pending = []
+    evaluated = 0
+    for ev in pending:
+        try:
+            eval_at = datetime.fromisoformat(ev["eval_at"])
+            if eval_at.tzinfo is None:
+                eval_at = eval_at.replace(tzinfo=timezone.utc)
+            if now < eval_at:
+                still_pending.append(ev); continue
+            # Due for evaluation
+            cid          = ev["market_id"]
+            wallet       = ev["wallet"]
+            entry_price  = float(ev["entry_price"])
+            outcome      = ev["outcome"]      # "Yes" or "No"
+            current_price = fetch_current_yes_price(cid)
+            if current_price is None:
+                still_pending.append(ev); continue  # can't fetch price, retry next scan
+            move = current_price - entry_price
+            if outcome == "No": move = -move   # for NO buys, down is good
+            is_win = move >= MIN_PRICE_MOVE
+            # Update wallet stats
+            ws = wallet_stats.get(wallet, {
+                "trades": 0, "wins": 0, "losses": 0, "accuracy": 0.0,
+                "total_move": 0.0, "avg_move_after_trade": 0.0,
+                "score": 0.0, "tier": "unknown", "last_seen": ev["recorded_at"]
+            })
+            ws["trades"]     += 1
+            ws["wins"]       += 1 if is_win else 0
+            ws["losses"]     += 0 if is_win else 1
+            ws["total_move"] = ws.get("total_move", 0.0) + abs(move)
+            ws["accuracy"]   = ws["wins"] / ws["trades"]
+            ws["avg_move_after_trade"] = ws["total_move"] / ws["trades"]
+            # Score: accuracy(60%) + avg_move(30%) + sample_weight(10%)
+            if ws["trades"] >= MIN_TRADES_SCORING:
+                score = (
+                    ws["accuracy"] * 0.6 +
+                    min(ws["avg_move_after_trade"] / 0.15, 1.0) * 0.3 +
+                    min(ws["trades"] / 20, 1.0) * 0.1
+                )
+                ws["score"] = round(score, 4)
+                # Market maker filter
+                if ws["trades"] >= MM_MIN_TRADES and ws["accuracy"] < MM_MAX_ACCURACY:
+                    ws["tier"] = "market_maker"
+                elif score >= ELITE_WALLET_SCORE:
+                    ws["tier"] = "elite"
+                elif score >= SMART_WALLET_SCORE:
+                    ws["tier"] = "smart"
+                else:
+                    ws["tier"] = "known"
+            else:
+                ws["tier"] = "unknown"
+            ws["last_seen"] = now.isoformat()
+            wallet_stats[wallet] = ws
+            evaluated += 1
+        except Exception as ex:
+            still_pending.append(ev)  # keep on error, retry next scan
+    if evaluated:
+        print(f"[+] Wallet evals: {evaluated} evaluated, {len(still_pending)} pending")
+    return still_pending
+
+def get_wallet_info(wallet, wallet_stats):
+    """Return wallet intelligence dict for a given address."""
+    ws = wallet_stats.get(wallet)
+    if not ws or ws.get("trades", 0) < MIN_TRADES_SCORING:
+        return {"tier": "unknown", "trades": 0, "accuracy": 0.0, "score": 0.0,
+                "avg_move": 0.0, "wallet": wallet}
+    return {
+        "tier":     ws.get("tier", "unknown"),
+        "trades":   ws.get("trades", 0),
+        "accuracy": ws.get("accuracy", 0.0),
+        "score":    ws.get("score", 0.0),
+        "avg_move": ws.get("avg_move_after_trade", 0.0),
+        "wallet":   wallet,
+    }
+
+def record_wallet_trade(pending, wallet, cid, market_name, entry_price, outcome, now):
+    """Queue a trade for 6h price-movement evaluation. Dedup: one eval per wallet+market per scan."""
+    if wallet == "unknown": return
+    # Skip if already have a recent pending eval for this wallet+market
+    for ev in pending:
+        if ev["wallet"] == wallet and ev["market_id"] == cid:
+            return
+    from datetime import timedelta
+    eval_at = (now + timedelta(hours=EVAL_DELAY_HOURS)).isoformat()
+    pending.append({
+        "eval_id":    f"{wallet[:10]}_{cid[:10]}_{int(now.timestamp())}",
+        "wallet":     wallet,
+        "market_id":  cid,
+        "market_name": market_name[:50],
+        "entry_price": round(entry_price, 4),
+        "outcome":    outcome,
+        "eval_at":    eval_at,
+        "recorded_at": now.isoformat(),
+    })
+
+def boost_signal_tier(base_tier, wallet_tier):
+    """
+    Apply wallet reputation boost to signal tier.
+    Returns: ("EXTREME++", "EXTREME", 1, 2, None)
+    None means suppress (market_maker).
+    """
+    if wallet_tier == "market_maker": return None   # suppress
+    if wallet_tier == "elite":
+        if base_tier == 0: return 1                  # upgrade dead signal to T1
+        return "EXTREME++"
+    if wallet_tier == "smart":
+        if base_tier == 2: return 1                  # T2 -> T1
+        if base_tier == 1: return "EXTREME"          # T1 -> EXTREME
+    return base_tier  # unknown/known: no change
+
+
 def qualify_whale(address):
     if address == "unknown": return False, None, 0
     return True, None, 0
@@ -414,9 +596,18 @@ def send_telegram(message):
     except Exception as e:
         print(f"[x] Telegram failed: {e}"); return False
 
-def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade", liq_shock_info=None):
-    is_extreme = (liq_shock_info is not None) and (signal_type == "Whale Accumulation") and (signal["tier"] == 1)
-    if is_extreme:
+def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade", liq_shock_info=None, wallet_info=None):
+    wtier = wallet_info.get("tier", "unknown") if wallet_info else "unknown"
+    boosted = boost_signal_tier(signal["tier"], wtier) if wtier in ("elite","smart","market_maker") else signal["tier"]
+    is_extreme_pp = (boosted == "EXTREME++")
+    is_extreme    = is_extreme_pp or (boosted == "EXTREME") or ((liq_shock_info is not None) and (signal_type == "Whale Accumulation") and (signal["tier"] == 1))
+    if wtier == "elite":
+        emoji = "\u2b50 ELITE WALLET DETECTED"
+        label = "EXTREME++ - HIGHEST CONVICTION"
+    elif wtier == "smart":
+        emoji = "\U0001f50d SMART WALLET DETECTED"
+        label = "EXTREME - HIGH CONVICTION" if is_extreme else "TIER 1 - ACT"
+    elif is_extreme:
         emoji = "\u26a0\ufe0f PRE-WHALE SETUP DETECTED"
         label = "EXTREME - HIGH CONVICTION"
     elif signal["tier"] == 1:
@@ -432,6 +623,12 @@ def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade", l
     if liq_shock_info is not None:
         prev_l, drop_p = liq_shock_info
         shock_line = f"Liquidity Change: ${prev_l:,.0f} -> ${wt.get('_current_liq', prev_l*(1-drop_p)):,.0f} (-{drop_p*100:.1f}%)\n"
+    wallet_line = ""
+    if wallet_info and wallet_info.get("trades", 0) >= MIN_TRADES_SCORING:
+        wa = wallet_info["accuracy"]*100
+        wt_label = wallet_info["tier"].upper()
+        wallet_line = (f"Wallet: {wallet_info['wallet'][:10]}...\n"
+                       f"  Tier: {wt_label} | Accuracy: {wa:.0f}% | Trades: {wallet_info['trades']} | Avg Move: {wallet_info['avg_move']*100:.1f}%\n")
     name   = market.get("question","Unknown")[:60]
     days   = market.get("_days_to_resolve","?")
     days_str = "Open Horizon (no end date)" if days == 999 else f"{days} days"
@@ -441,6 +638,7 @@ def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade", l
     outcome_note = f" (NO-side buy, adj. YES={signal['whale_prob']:.3f})" if wt.get("outcome") == "No" else ""
     event_line   = f"Event: {market['_parent_event_title'][:55]}\n" if market.get("_parent_event_title") else ""
     return (f"{emoji}  [{cat}] [{signal_type.upper()}]\n\nMarket: {name}\n{event_line}Resolves in: {days_str}\n"
+            f"{wallet_line}"
             f"Direction: {wt['direction']} {wt.get('outcome','Yes')}{outcome_note}  Size: ${wt['size_usd']:,.2f}\n"
             f"{shock_line}"
             f"{cluster_line}"
@@ -455,7 +653,7 @@ def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade", l
 def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_resolution_filter=False, force_stage=None):
     global WHALE_MIN_SIZE
     print("\n" + "="*62)
-    print(f"WHALE TRACKER v6.2 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"WHALE TRACKER v6.3 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"MinLiq=${MIN_LIQUIDITY:,} | NullDateMinLiq=${NULL_DATE_MIN_LIQ:,} | ImpactRatio={MIN_IMPACT_RATIO} | MaxHorizon={MAX_HORIZON_DAYS}d | Div=dynamic")
     print("="*62)
     if min_size: WHALE_MIN_SIZE = min_size
@@ -463,6 +661,11 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
     stage_used       = 1
     liq_history      = load_liquidity_history()
     liq_history_upd  = {}  # collected this scan, written at end
+    now              = datetime.now(timezone.utc)
+    wallet_stats     = load_wallet_stats()
+    pending_evals    = load_pending_evals()
+    # Phase 4: process any evals that are due
+    pending_evals    = process_pending_evals(pending_evals, wallet_stats, now)
 
     if target_market_id:
         markets = [{"conditionId": target_market_id}]; stage_used = 1
@@ -524,19 +727,35 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
             days_label = "Open" if days_to_res == 999 else f"{days_to_res}d"
             stype_short = "ACCUM" if wt.get("signal_type") == "Whale Accumulation" else "SINGLE"
             cluster_info = f" {wt['trade_count']}tx/{wt['span_mins']:.0f}min" if wt.get("signal_type") == "Whale Accumulation" else ""
-            print(f"  [*] TIER {sig['tier']} [{stype_short}] [{category.upper()}] outcome={wt.get('outcome','?')} whale_YES={sig['whale_prob']:.3f} mkt_YES={sig['market_prob']:.3f} div={sig['divergence']*100:.1f}% (need {sig['threshold_t1']*100:.1f}%) ${wt['size_usd']:,.0f} impact={wt['impact_ratio']*100:.2f}% {days_label}{cluster_info}")
+            wtag = f" [W:{wt['wallet'][:8]}]" if wt.get("wallet","unknown") != "unknown" else ""
+            print(f"  [*] TIER {sig['tier']} [{stype_short}] [{category.upper()}] outcome={wt.get('outcome','?')} whale_YES={sig['whale_prob']:.3f} mkt_YES={sig['market_prob']:.3f} div={sig['divergence']*100:.1f}% (need {sig['threshold_t1']*100:.1f}%) ${wt['size_usd']:,.0f} impact={wt['impact_ratio']*100:.2f}% {days_label}{cluster_info}{wtag}")
             if any(s["market_id"]==cid for s in signals_found): continue
             stype = wt.get("signal_type", "Whale Single Trade")
-            signals_found.append({"market_id":cid,"market_name":market.get("question","Unknown"),"market_slug":market.get("slug",""),"parent_event":market.get("_parent_event_title",""),"market_category":category,"yes_price":yes_price,"tier":sig["tier"],"divergence":sig["divergence"],"threshold_t1":sig["threshold_t1"],"whale_prob":sig["whale_prob"],"market_prob":sig["market_prob"],"direction":wt["direction"],"outcome":wt.get("outcome","Yes"),"size_usd":wt["size_usd"],"impact_ratio":wt["impact_ratio"],"wallet":wt["wallet"],"end_date_iso":market.get("_end_date_iso",""),"days_to_resolve":days_to_res,"null_date":market.get("_null_date",False),"stage_used":stage_used,"liq_shock":shock,"prev_liq":round(prev_liq,2),"liq_drop_pct":round(drop_pct,4),"signal_type":stype,"scanned_at":datetime.now(timezone.utc).isoformat()})
+            # Phase 4: wallet intelligence
+            winfo = get_wallet_info(wt["wallet"], wallet_stats)
+            boosted_tier = boost_signal_tier(sig["tier"], winfo["tier"])
+            if boosted_tier is None:  # market_maker suppressed
+                print(f"  [--] Market maker suppressed: {wt['wallet'][:10]}")
+                continue
+            record_wallet_trade(pending_evals, wt["wallet"], cid,
+                                market.get("question",""), wt["price"],
+                                wt.get("outcome","Yes"), now)
+            signals_found.append({"market_id":cid,"market_name":market.get("question","Unknown"),"market_slug":market.get("slug",""),"parent_event":market.get("_parent_event_title",""),"market_category":category,"yes_price":yes_price,"tier":sig["tier"],"boosted_tier":str(boosted_tier),"divergence":sig["divergence"],"threshold_t1":sig["threshold_t1"],"whale_prob":sig["whale_prob"],"market_prob":sig["market_prob"],"direction":wt["direction"],"outcome":wt.get("outcome","Yes"),"size_usd":wt["size_usd"],"impact_ratio":wt["impact_ratio"],"wallet":wt["wallet"],"wallet_tier":winfo["tier"],"end_date_iso":market.get("_end_date_iso",""),"days_to_resolve":days_to_res,"null_date":market.get("_null_date",False),"stage_used":stage_used,"liq_shock":shock,"prev_liq":round(prev_liq,2),"liq_drop_pct":round(drop_pct,4),"signal_type":stype,"scanned_at":now.isoformat()})
             shock_info = (prev_liq, drop_pct) if shock else None
             if shock and stype == "Whale Accumulation" and sig["tier"] == 1:
                 print(f"  [!!!] EXTREME signal: liq shock + accumulation + Tier 1")
-            if not json_output: send_telegram(format_signal(market, wt, sig, stage_used, stype, shock_info))
+            if winfo["tier"] in ("elite","smart"):
+                print(f"  [W:{winfo['tier'].upper()}] acc={winfo['accuracy']*100:.0f}% trades={winfo['trades']} score={winfo['score']:.2f} -> tier {sig['tier']} boosted to {boosted_tier}")
+            if not json_output: send_telegram(format_signal(market, wt, sig, stage_used, stype, shock_info, winfo))
 
     # Phase 3: persist liquidity snapshots for next scan
     liq_history.update(liq_history_upd)
     save_liquidity_history(liq_history)
-    print(f"[+] Liq history: {len(liq_history_upd)} markets snapshotted -> {LIQUIDITY_HISTORY_FILE.split("/")[-1]}")
+    print(f"[+] Liq history: {len(liq_history_upd)} markets snapshotted -> {LIQUIDITY_HISTORY_FILE.split(chr(47))[-1]}")
+    # Phase 4: persist wallet intelligence
+    save_wallet_stats(wallet_stats)
+    save_pending_evals(pending_evals)
+    print(f"[+] Wallet DB: {len(wallet_stats)} wallets | Pending evals: {len(pending_evals)}")
 
     print("\n" + "="*62)
     print(f"SCAN COMPLETE -- Stage {stage_used} -- {len(signals_found)} signal(s)")
@@ -554,7 +773,7 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
     return signals_found
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Polymarket Whale Signal Detection v6.2")
+    parser = argparse.ArgumentParser(description="Polymarket Whale Signal Detection v6.3")
     parser.add_argument("--min-size",             type=float, default=None)
     parser.add_argument("--market-id",            type=str,   default=None)
     parser.add_argument("--json",                 action="store_true", default=False)
