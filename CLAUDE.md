@@ -1647,8 +1647,8 @@ Parameters (ChatGPT recommended):
 New Telegram label: "Whale Accumulation" vs "Whale Single Trade"
 
 ### PHASE 3 -- Liquidity Shock Detection (ChatGPT upgrade #2)
-Status: DESIGNED (requires new persistent state file)
-Build after Phase 2 stable.
+Status: COMPLETE -- commit a6f60b8 (2026-03-10)
+Live tested: shock detection firing at -25.9% drop. EXTREME tier wired for shock+cluster+T1.
 Expected detection improvement: 30-50% -> 50-70% of real whale activity
 
 Key architectural requirement: persistent state between cron runs
@@ -1684,7 +1684,7 @@ Priority: CRITICAL
 
 Priority: HIGH
   [x] BUG-021 Phase 2: Whale accumulation clustering -- DONE commit 48e5e9e (v6.1)
-  [ ] BUG-021 Phase 3: Liquidity shock detection (NEXT -- build after Phase 2 stable)
+  [x] BUG-021 Phase 3: Liquidity shock detection -- DONE commit a6f60b8 (v6.2)
   [ ] Smart Router DAY 3: Full activation (proxy architecture -- BUG-020 timeout issue blocks this)
       Options: A+D (pre-warm Gemma, never route Telegram to Gemma)
                OR native OpenClaw skill system (correct long-term approach, no timeout)
