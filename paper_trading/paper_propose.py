@@ -52,7 +52,7 @@ TG = load_telegram_config()
 
 # -- Timing --------------------------------------------------------------------
 POLL_INTERVAL_SEC = 5      # check for callback every 5 seconds (faster than text polling)
-TIMEOUT_MIN       = 30     # proposal expires after 30 minutes
+TIMEOUT_MIN       = 240    # BUG-017 FIX: 4hr window so overnight proposals survive until morning (MST)
 TIMEOUT_SEC       = TIMEOUT_MIN * 60
 
 # -- Signal tier descriptions --------------------------------------------------
