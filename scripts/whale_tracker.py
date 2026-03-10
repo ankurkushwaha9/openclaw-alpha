@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 whale_tracker.py - Polymarket Whale Signal Detection
-Last Updated: 2026-03-09 (v6.0 - BUG-021: /events endpoint + 3 guards + null-date handling)
+Last Updated: 2026-03-10 (v6.1 - Phase 2: accumulation clustering + single-trade label)
 
 Changes v5.2 -> v6.0:
   BUG-021 FIX: Now fetches BOTH /markets AND /events endpoints in parallel.
@@ -51,6 +51,11 @@ MAX_HORIZON_DAYS    = 75
 STAGE2_TRIGGER = 5
 STAGE3_TRIGGER = 1
 STAGE4_TRIGGER = 3
+
+# Phase 2 -- Accumulation Clustering
+CLUSTER_WINDOW        = 1800   # 30 minutes in seconds
+MIN_TRADES_IN_CLUSTER = 3
+MIN_CLUSTER_TOTAL     = 900    # USDC
 
 STAGE_CONFIG = {
     1: {"min_days": 1,  "max_days": 7,  "whale_min": 400,  "label": "TACTICAL"},
@@ -280,6 +285,71 @@ def find_whale_trades(trades, market_liquidity, days_to_resolve, is_sports=False
         except: continue
     return whales
 
+def find_whale_clusters(trades, market_liquidity, days_to_resolve, is_sports=False):
+    """
+    Phase 2: Accumulation clustering.
+    Groups trades by proxyWallet within CLUSTER_WINDOW seconds.
+    Fires when a wallet makes >= MIN_TRADES_IN_CLUSTER trades totalling >= MIN_CLUSTER_TOTAL
+    in the same direction within 30 minutes.
+    """
+    from collections import defaultdict
+    wallet_trades = defaultdict(list)
+    for trade in trades:
+        try:
+            wallet = trade.get("proxyWallet", "unknown")
+            if wallet == "unknown": continue
+            ts  = int(trade.get("timestamp", 0))
+            usd = float(trade.get("usdcSize") or trade.get("size", 0) or 0)
+            if usd <= 0 or ts <= 0: continue
+            wallet_trades[wallet].append({
+                "ts":      ts,
+                "usd":     usd,
+                "outcome": trade.get("outcome", "Yes"),
+                "price":   float(trade.get("price", 0.5)),
+            })
+        except: continue
+
+    clusters = []
+    liq = max(market_liquidity, 1)
+
+    for wallet, wtrades in wallet_trades.items():
+        if len(wtrades) < MIN_TRADES_IN_CLUSTER: continue
+        wtrades.sort(key=lambda t: t["ts"])
+        n = len(wtrades)
+        for start in range(n):
+            window = [wtrades[start]]
+            for end in range(start + 1, n):
+                if wtrades[end]["ts"] - wtrades[start]["ts"] <= CLUSTER_WINDOW:
+                    window.append(wtrades[end])
+                else:
+                    break
+            if len(window) < MIN_TRADES_IN_CLUSTER: continue
+            outcomes = set(t["outcome"] for t in window)
+            if len(outcomes) > 1: continue  # mixed direction -- not coordinated
+            total_usd = sum(t["usd"] for t in window)
+            if total_usd < MIN_CLUSTER_TOTAL: continue
+            impact = total_usd / liq
+            if total_usd > liq * 0.5:
+                print(f"  [!] Cluster manip guard: ${total_usd:,.0f} vs ${liq:,.0f} liq ({impact*100:.1f}%) -- skip")
+                continue
+            if impact < MIN_IMPACT_RATIO: continue
+            outcome   = window[0]["outcome"]
+            avg_price = sum(t["price"] for t in window) / len(window)
+            span_mins = (window[-1]["ts"] - window[0]["ts"]) / 60
+            clusters.append({
+                "wallet":       wallet,
+                "direction":    "BUY",
+                "size_usd":     round(total_usd, 2),
+                "price":        round(avg_price, 4),
+                "outcome":      outcome,
+                "impact_ratio": round(impact, 5),
+                "trade_count":  len(window),
+                "span_mins":    round(span_mins, 1),
+                "signal_type":  "Whale Accumulation",
+            })
+            break  # one cluster per wallet per market
+    return clusters
+
 def qualify_whale(address):
     if address == "unknown": return False, None, 0
     return True, None, 0
@@ -304,9 +374,12 @@ def send_telegram(message):
     except Exception as e:
         print(f"[x] Telegram failed: {e}"); return False
 
-def format_signal(market, wt, signal, stage):
+def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade"):
     emoji  = "!! WHALE SIGNAL !!" if signal["tier"]==1 else "?? WHALE SIGNAL ??"
     label  = "TIER 1 - ACT"       if signal["tier"]==1 else "TIER 2 - MONITOR"
+    cluster_line = ""
+    if signal_type == "Whale Accumulation":
+        cluster_line = f"Cluster: {wt.get('trade_count','?')} trades in {wt.get('span_mins','?'):.1f}min\n"
     name   = market.get("question","Unknown")[:60]
     days   = market.get("_days_to_resolve","?")
     days_str = "Open Horizon (no end date)" if days == 999 else f"{days} days"
@@ -315,8 +388,9 @@ def format_signal(market, wt, signal, stage):
     sports = " [SPORTS +2% premium]" if signal["is_sports"] else ""
     outcome_note = f" (NO-side buy, adj. YES={signal['whale_prob']:.3f})" if wt.get("outcome") == "No" else ""
     event_line   = f"Event: {market['_parent_event_title'][:55]}\n" if market.get("_parent_event_title") else ""
-    return (f"{emoji}  [{cat}]\n\nMarket: {name}\n{event_line}Resolves in: {days_str}\n"
+    return (f"{emoji}  [{cat}] [{signal_type.upper()}]\n\nMarket: {name}\n{event_line}Resolves in: {days_str}\n"
             f"Direction: {wt['direction']} {wt.get('outcome','Yes')}{outcome_note}  Size: ${wt['size_usd']:,.2f}\n"
+            f"{cluster_line}"
             f"Impact: {wt['impact_ratio']*100:.2f}% of pool\nWhale price: {wt['price']:.3f}\n\n"
             f"Market YES: {signal['market_prob']:.3f} ({signal['market_prob']*100:.1f}%)\n"
             f"Whale implied YES: {signal['whale_prob']:.3f} ({signal['whale_prob']*100:.1f}%)\n"
@@ -328,7 +402,7 @@ def format_signal(market, wt, signal, stage):
 def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_resolution_filter=False, force_stage=None):
     global WHALE_MIN_SIZE
     print("\n" + "="*62)
-    print(f"WHALE TRACKER v6.0 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"WHALE TRACKER v6.1 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"MinLiq=${MIN_LIQUIDITY:,} | NullDateMinLiq=${NULL_DATE_MIN_LIQ:,} | ImpactRatio={MIN_IMPACT_RATIO} | MaxHorizon={MAX_HORIZON_DAYS}d | Div=dynamic")
     print("="*62)
     if min_size: WHALE_MIN_SIZE = min_size
@@ -368,11 +442,16 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
         days_to_res = market.get("_days_to_resolve", 7)
         trades = get_recent_trades(cid)
         if not trades: continue
-        whales = find_whale_trades(trades, liquidity, days_to_res, is_sports)
-        if not whales: continue
+        whales   = find_whale_trades(trades, liquidity, days_to_res, is_sports)
+        clusters = find_whale_clusters(trades, liquidity, days_to_res, is_sports)
+        if not whales and not clusters: continue
         event_ctx = f" [{market.get('_parent_event_title','')[:25]}]" if market.get("_parent_event_title") else ""
-        print(f"[!] {len(whales)} whale(s) [{category.upper()}]{event_ctx}: {name}")
-        for wt in whales:
+        if clusters:
+            print(f"[!] {len(clusters)} cluster(s) [{category.upper()}]{event_ctx}: {name}")
+        if whales:
+            print(f"[!] {len(whales)} whale(s) [{category.upper()}]{event_ctx}: {name}")
+        # Process clusters first (higher confidence), then singles
+        for wt in (clusters + whales):
             ok, wr, cnt = qualify_whale(wt["wallet"])
             if not ok: continue
             try:
@@ -383,10 +462,13 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
             if sig["tier"] == 0: continue
             if yes_price < SKIP_THRESHOLD or yes_price > (1 - SKIP_THRESHOLD): continue
             days_label = "Open" if days_to_res == 999 else f"{days_to_res}d"
-            print(f"  [*] TIER {sig['tier']} [{category.upper()}] outcome={wt.get('outcome','?')} whale_YES={sig['whale_prob']:.3f} mkt_YES={sig['market_prob']:.3f} div={sig['divergence']*100:.1f}% (need {sig['threshold_t1']*100:.1f}%) ${wt['size_usd']:,.0f} impact={wt['impact_ratio']*100:.2f}% {days_label}")
+            stype_short = "ACCUM" if wt.get("signal_type") == "Whale Accumulation" else "SINGLE"
+            cluster_info = f" {wt['trade_count']}tx/{wt['span_mins']:.0f}min" if wt.get("signal_type") == "Whale Accumulation" else ""
+            print(f"  [*] TIER {sig['tier']} [{stype_short}] [{category.upper()}] outcome={wt.get('outcome','?')} whale_YES={sig['whale_prob']:.3f} mkt_YES={sig['market_prob']:.3f} div={sig['divergence']*100:.1f}% (need {sig['threshold_t1']*100:.1f}%) ${wt['size_usd']:,.0f} impact={wt['impact_ratio']*100:.2f}% {days_label}{cluster_info}")
             if any(s["market_id"]==cid for s in signals_found): continue
             signals_found.append({"market_id":cid,"market_name":market.get("question","Unknown"),"market_slug":market.get("slug",""),"parent_event":market.get("_parent_event_title",""),"market_category":category,"yes_price":yes_price,"tier":sig["tier"],"divergence":sig["divergence"],"threshold_t1":sig["threshold_t1"],"whale_prob":sig["whale_prob"],"market_prob":sig["market_prob"],"direction":wt["direction"],"outcome":wt.get("outcome","Yes"),"size_usd":wt["size_usd"],"impact_ratio":wt["impact_ratio"],"wallet":wt["wallet"],"end_date_iso":market.get("_end_date_iso",""),"days_to_resolve":days_to_res,"null_date":market.get("_null_date",False),"stage_used":stage_used,"scanned_at":datetime.now(timezone.utc).isoformat()})
-            if not json_output: send_telegram(format_signal(market, wt, sig, stage_used))
+            stype = wt.get("signal_type", "Whale Single Trade")
+            if not json_output: send_telegram(format_signal(market, wt, sig, stage_used, stype))
 
     print("\n" + "="*62)
     print(f"SCAN COMPLETE -- Stage {stage_used} -- {len(signals_found)} signal(s)")
