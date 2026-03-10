@@ -962,3 +962,143 @@ Word-boundary regex alone is not sufficient.
     Detection coverage: ~10% (v5.2) -> ~50-70% estimated (v6.3)
     Markets visible: 500 (/markets only) -> 13,533+ (merged /markets + /events)
     Signal quality: single threshold -> 4-layer scoring (divergence + cluster + shock + wallet)
+
+
+---
+
+## BUG-022 🐛 Paper Proposal Buttons Expire Overnight
+
+- Status: FIXED ✅
+- Priority: MEDIUM
+- Discovered: 2026-03-10
+- Affected File: paper_trading/paper_propose.py
+
+- Symptom:
+  Whale signals fire every 2 hours around the clock.
+  Most proposals fire between midnight and 6am MST while Ankur sleeps.
+  By morning, all overnight proposals show expired -- buttons already removed.
+  TIMEOUT_MIN = 30 means buttons disappear 30min after send.
+
+- Root Cause:
+  Timing mismatch: proposals fire on cron schedule (UTC), Ankur reviews at wake (MST = UTC-7).
+  A 30-minute window is too short for overnight proposals.
+  Markets resolve in 8-21 days -- a few hours of price drift is acceptable.
+
+- Fix Applied (commit pending):
+  paper_propose.py line 55:
+    Before: TIMEOUT_MIN = 30
+    After:  TIMEOUT_MIN = 240  (4 hours)
+  TIMEOUT_SEC = TIMEOUT_MIN * 60 auto-updates all downstream uses.
+  Safe: timestamp-based callback_data per proposal prevents multi-proposal interference.
+
+---
+
+## BUG-023 🐛 n8n Forwards Callback Tokens to Kimi -- Context Confusion
+
+- Status: OPEN (partial workaround documented)
+- Priority: MEDIUM
+- Discovered: 2026-03-10
+- Affected Files: paper_trading/paper_propose.py, n8n Telegram workflow
+
+- Symptom:
+  When Ankur taps YES/NO on a proposal, n8n ALSO receives the callback_query update.
+  n8n forwards bare token (PAPER_YES_1773151218, PAPER_NO_1773158420) to Kimi.
+  Kimi has no context about which proposal is active -- guesses from session history.
+  Result: Kimi references the wrong trade (most recent one it knows about).
+
+- Root Cause (two stacked problems):
+  1. n8n Telegram trigger receives ALL update types by default (including callback_query)
+     Code comment "callback_query updates are a separate type they never touch" is WRONG.
+  2. Kimi shares one persistent session for the full day (137+ messages)
+     Guesses context from history when it receives a bare callback token.
+
+- Fix Options:
+  Option A (RECOMMENDED -- architecturally correct):
+    Add n8n filter: if message matches PAPER_YES_* or PAPER_NO_* pattern -> DROP, do not forward to Kimi.
+    Kimi has no business seeing raw callback tokens. paper_propose.py handles execution independently.
+    Requires: edit n8n Telegram workflow in n8n UI (cannot be done via EC2 code).
+
+  Option B (workaround):
+    paper_propose.py sends context message to Kimi before opening buttons.
+    "PROPOSAL ACTIVE: [market_name] -- waiting for YES/NO"
+    Kimi then has correct context when callback arrives.
+    Downside: root problem (n8n receiving callbacks) remains. Adds n8n dependency.
+
+- Recommended Action:
+  1. Apply Option A in n8n UI: add IF node before Kimi -- filter out PAPER_YES_* / PAPER_NO_*
+  2. Optionally add Option B as belt-and-suspenders for Kimi situational awareness
+  3. Long term: configure n8n Telegram trigger to receive 'message' updates ONLY (not callback_query)
+
+---
+
+## BUG-022 - Paper Proposal Buttons Expire Overnight
+
+- Status: FIXED
+- Priority: MEDIUM
+- Discovered: 2026-03-10
+- Affected File: paper_trading/paper_propose.py
+
+- Symptom:
+  Whale signals fire every 2 hours around the clock.
+  Most proposals fire between midnight and 6am MST while Ankur sleeps.
+  By morning, all overnight proposals show expired -- buttons already removed.
+  TIMEOUT_MIN = 30 means buttons disappear 30min after send.
+
+- Root Cause:
+  Timing mismatch: proposals fire on UTC cron schedule, Ankur reviews at wake (MST = UTC-7).
+  30-minute window too short for overnight proposals.
+  Markets resolve in 8-21 days -- a few hours of price drift is acceptable.
+
+- Fix Applied:
+  paper_trading/paper_propose.py line 55:
+    Before: TIMEOUT_MIN = 30
+    After:  TIMEOUT_MIN = 240  (4 hours)
+  TIMEOUT_SEC = TIMEOUT_MIN * 60 auto-updates all downstream references.
+  Safe: timestamp-based callback_data per proposal prevents multi-proposal interference.
+
+---
+
+## BUG-023 - n8n Forwards Callback Tokens to Kimi -- Context Confusion
+
+- Status: OPEN (fix documented, requires n8n UI action)
+- Priority: MEDIUM
+- Discovered: 2026-03-10
+- Affected Files: paper_trading/paper_propose.py, n8n Telegram workflow
+
+- Symptom:
+  When Ankur taps YES/NO on a proposal, n8n ALSO receives the callback_query update.
+  n8n forwards bare token (PAPER_YES_1773151218, PAPER_NO_1773158420) to Kimi.
+  Kimi has no context about which proposal is active -- guesses from session history.
+  Result: Kimi references the wrong trade (most recent one it knows about).
+
+- Example timeline:
+  14:00 UTC -- Democrats Senate proposal sent
+  14:10 UTC -- Ankur taps YES -> paper_propose.py executes correctly
+               n8n ALSO receives YES callback -> Kimi logs "Democrats YES"
+  16:00 UTC -- Kostyantynivka proposal sent
+  16:00 UTC -- Ankur taps NO -> paper_propose.py skips correctly
+               n8n ALSO receives NO callback -> forwards bare PAPER_NO_1773158420 to Kimi
+               Kimi sees NO, most recent trade it knows = Democrats
+               Kimi says "I already executed Democrats on your previous callback" -- WRONG
+
+- Root Cause (two stacked problems):
+  1. n8n Telegram trigger receives ALL update types by default (including callback_query)
+     Code comment saying "n8n never sees callback_query" is INCORRECT in practice.
+  2. Kimi shares one persistent session all day (137+ messages) -- guesses from history
+
+- Fix:
+  Option A -- RECOMMENDED (architecturally correct):
+    In n8n UI: add IF node before Kimi forward step.
+    Condition: message text does NOT match pattern ^PAPER_(YES|NO)_\d+$
+    If pattern matches -> DROP (do not forward to Kimi)
+    Kimi has no business seeing raw callback tokens.
+    Also: configure n8n Telegram trigger to receive 'message' updates ONLY (not callback_query)
+
+  Option B -- Belt and suspenders (add AFTER Option A):
+    paper_propose.py sends context line before opening buttons:
+    "PROPOSAL ACTIVE: [market_name] -- awaiting YES/NO"
+    Kimi then has correct active trade context if callback somehow still arrives.
+
+- Action Required:
+  Ankur must apply Option A manually in n8n UI (cannot be done via EC2 code).
+  URL: http://[EC2_IP]:5678 -> Telegram workflow -> add IF filter node
