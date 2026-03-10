@@ -272,18 +272,17 @@ Dashboard: dashboard.uptimerobot.com/monitors/802403664
 
 ### Whale Tracker:
 Script: ~/.openclaw/workspace/scripts/whale_tracker.py
-Version: v5.2 (2026-03-07) -- 3-LLM consensus (Claude + Gemini + ChatGPT)
+Version: v6.3 (2026-03-10) -- BUG-021 all 4 phases complete (events + clustering + shock + wallet intel)
 API: https://data-api.polymarket.com (public, no auth)
 KEY FIX: Wallet field is proxyWallet (NOT transactorAddress or maker)
 
 Run: cd ~/.openclaw/workspace && /home/ubuntu/.openclaw/workspace/polyclaw/.venv/bin/python3 scripts/whale_tracker.py
 Cron: 0 */2 * * * (every 2 hours -- upgrade to 30min is PENDING)
 
-KNOWN BUG (BUG-021 - HIGH PRIORITY): /events endpoint NOT scanned
-  whale_tracker.py only fetches /markets endpoint.
-  ALL major geopolitics markets (Iran, Hormuz, etc.) live in /events endpoint only.
-  Confirmed missing: Iranian regime fall $26.6M vol, Hormuz $21.8M vol, US x Iran ceasefire $14.6M vol
-  Fix: 3-phase upgrade (see WHALE TRACKER UPGRADE ROADMAP section below)
+BUG-021: RESOLVED ✅ (2026-03-10, whale_tracker.py v6.3)
+  All 4 phases complete. Now scans 13,533+ markets (was: 500).
+  Iran, Hormuz, ceasefire, all geopolitics markets now visible.
+  See BUGS.md BUG-021 for full resolution details.
 
 Recent config changes:
   STAGE3_TRIGGER: 3 -> 1 (commit 44f0d19, 2026-03-09)
