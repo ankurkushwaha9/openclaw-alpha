@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 whale_tracker.py - Polymarket Whale Signal Detection
-Last Updated: 2026-03-10 (v6.1 - Phase 2: accumulation clustering + single-trade label)
+Last Updated: 2026-03-10 (v6.2 - Phase 3: liquidity shock detection + EXTREME tier)
 
 Changes v5.2 -> v6.0:
   BUG-021 FIX: Now fetches BOTH /markets AND /events endpoints in parallel.
@@ -56,6 +56,10 @@ STAGE4_TRIGGER = 3
 CLUSTER_WINDOW        = 1800   # 30 minutes in seconds
 MIN_TRADES_IN_CLUSTER = 3
 MIN_CLUSTER_TOTAL     = 900    # USDC
+
+# Phase 3 -- Liquidity Shock Detection
+LIQUIDITY_SHOCK_PCT    = 0.20  # 20% drop from last scan triggers shock flag
+LIQUIDITY_HISTORY_FILE = os.path.join(os.path.dirname(__file__), '..', 'paper_trading', 'liquidity_history.json')
 
 STAGE_CONFIG = {
     1: {"min_days": 1,  "max_days": 7,  "whale_min": 400,  "label": "TACTICAL"},
@@ -350,6 +354,42 @@ def find_whale_clusters(trades, market_liquidity, days_to_resolve, is_sports=Fal
             break  # one cluster per wallet per market
     return clusters
 
+def load_liquidity_history():
+    """Phase 3: Load persisted liquidity snapshots from previous scan."""
+    try:
+        with open(LIQUIDITY_HISTORY_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}  # safe first-run -- no history yet
+
+def save_liquidity_history(history):
+    """Phase 3: Persist liquidity snapshots for next scan comparison."""
+    try:
+        import tempfile, os as _os
+        tmp = LIQUIDITY_HISTORY_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(history, f, indent=2)
+        _os.replace(tmp, LIQUIDITY_HISTORY_FILE)  # atomic write
+    except Exception as e:
+        print(f"  [x] Liq history save failed: {e}")
+
+def check_liquidity_shock(cid, current_liq, history):
+    """
+    Phase 3: Compare current liquidity vs stored snapshot.
+    Returns (shock_detected, prev_liq, drop_pct).
+    shock_detected=False on first run (no history) or if drop < threshold.
+    """
+    if cid not in history:
+        return False, 0.0, 0.0
+    prev = float(history[cid].get("liq", 0))
+    if prev <= 0 or current_liq <= 0:
+        return False, prev, 0.0
+    drop_pct = (prev - current_liq) / prev
+    if drop_pct >= LIQUIDITY_SHOCK_PCT:
+        return True, prev, drop_pct
+    return False, prev, drop_pct
+
+
 def qualify_whale(address):
     if address == "unknown": return False, None, 0
     return True, None, 0
@@ -374,12 +414,24 @@ def send_telegram(message):
     except Exception as e:
         print(f"[x] Telegram failed: {e}"); return False
 
-def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade"):
-    emoji  = "!! WHALE SIGNAL !!" if signal["tier"]==1 else "?? WHALE SIGNAL ??"
-    label  = "TIER 1 - ACT"       if signal["tier"]==1 else "TIER 2 - MONITOR"
+def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade", liq_shock_info=None):
+    is_extreme = (liq_shock_info is not None) and (signal_type == "Whale Accumulation") and (signal["tier"] == 1)
+    if is_extreme:
+        emoji = "\u26a0\ufe0f PRE-WHALE SETUP DETECTED"
+        label = "EXTREME - HIGH CONVICTION"
+    elif signal["tier"] == 1:
+        emoji = "!! WHALE SIGNAL !!"
+        label = "TIER 1 - ACT"
+    else:
+        emoji = "?? WHALE SIGNAL ??"
+        label = "TIER 2 - MONITOR"
     cluster_line = ""
     if signal_type == "Whale Accumulation":
         cluster_line = f"Cluster: {wt.get('trade_count','?')} trades in {wt.get('span_mins','?'):.1f}min\n"
+    shock_line = ""
+    if liq_shock_info is not None:
+        prev_l, drop_p = liq_shock_info
+        shock_line = f"Liquidity Change: ${prev_l:,.0f} -> ${wt.get('_current_liq', prev_l*(1-drop_p)):,.0f} (-{drop_p*100:.1f}%)\n"
     name   = market.get("question","Unknown")[:60]
     days   = market.get("_days_to_resolve","?")
     days_str = "Open Horizon (no end date)" if days == 999 else f"{days} days"
@@ -390,6 +442,7 @@ def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade"):
     event_line   = f"Event: {market['_parent_event_title'][:55]}\n" if market.get("_parent_event_title") else ""
     return (f"{emoji}  [{cat}] [{signal_type.upper()}]\n\nMarket: {name}\n{event_line}Resolves in: {days_str}\n"
             f"Direction: {wt['direction']} {wt.get('outcome','Yes')}{outcome_note}  Size: ${wt['size_usd']:,.2f}\n"
+            f"{shock_line}"
             f"{cluster_line}"
             f"Impact: {wt['impact_ratio']*100:.2f}% of pool\nWhale price: {wt['price']:.3f}\n\n"
             f"Market YES: {signal['market_prob']:.3f} ({signal['market_prob']*100:.1f}%)\n"
@@ -402,12 +455,14 @@ def format_signal(market, wt, signal, stage, signal_type="Whale Single Trade"):
 def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_resolution_filter=False, force_stage=None):
     global WHALE_MIN_SIZE
     print("\n" + "="*62)
-    print(f"WHALE TRACKER v6.1 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"WHALE TRACKER v6.2 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"MinLiq=${MIN_LIQUIDITY:,} | NullDateMinLiq=${NULL_DATE_MIN_LIQ:,} | ImpactRatio={MIN_IMPACT_RATIO} | MaxHorizon={MAX_HORIZON_DAYS}d | Div=dynamic")
     print("="*62)
     if min_size: WHALE_MIN_SIZE = min_size
-    signals_found = []
-    stage_used    = 1
+    signals_found    = []
+    stage_used       = 1
+    liq_history      = load_liquidity_history()
+    liq_history_upd  = {}  # collected this scan, written at end
 
     if target_market_id:
         markets = [{"conditionId": target_market_id}]; stage_used = 1
@@ -440,6 +495,11 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
         is_sports   = (category == "sports")
         liquidity   = float(market.get("liquidityNum") or market.get("liquidity") or 0)
         days_to_res = market.get("_days_to_resolve", 7)
+        # Phase 3: shock check + snapshot accumulation
+        shock, prev_liq, drop_pct = check_liquidity_shock(cid, liquidity, liq_history)
+        liq_history_upd[cid] = {"liq": liquidity, "ts": datetime.now(timezone.utc).isoformat()}
+        if shock:
+            print(f"  [~] Liq SHOCK [{category.upper()}]: ${prev_liq:,.0f} -> ${liquidity:,.0f} (-{drop_pct*100:.1f}%) {name}")
         trades = get_recent_trades(cid)
         if not trades: continue
         whales   = find_whale_trades(trades, liquidity, days_to_res, is_sports)
@@ -466,9 +526,17 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
             cluster_info = f" {wt['trade_count']}tx/{wt['span_mins']:.0f}min" if wt.get("signal_type") == "Whale Accumulation" else ""
             print(f"  [*] TIER {sig['tier']} [{stype_short}] [{category.upper()}] outcome={wt.get('outcome','?')} whale_YES={sig['whale_prob']:.3f} mkt_YES={sig['market_prob']:.3f} div={sig['divergence']*100:.1f}% (need {sig['threshold_t1']*100:.1f}%) ${wt['size_usd']:,.0f} impact={wt['impact_ratio']*100:.2f}% {days_label}{cluster_info}")
             if any(s["market_id"]==cid for s in signals_found): continue
-            signals_found.append({"market_id":cid,"market_name":market.get("question","Unknown"),"market_slug":market.get("slug",""),"parent_event":market.get("_parent_event_title",""),"market_category":category,"yes_price":yes_price,"tier":sig["tier"],"divergence":sig["divergence"],"threshold_t1":sig["threshold_t1"],"whale_prob":sig["whale_prob"],"market_prob":sig["market_prob"],"direction":wt["direction"],"outcome":wt.get("outcome","Yes"),"size_usd":wt["size_usd"],"impact_ratio":wt["impact_ratio"],"wallet":wt["wallet"],"end_date_iso":market.get("_end_date_iso",""),"days_to_resolve":days_to_res,"null_date":market.get("_null_date",False),"stage_used":stage_used,"scanned_at":datetime.now(timezone.utc).isoformat()})
             stype = wt.get("signal_type", "Whale Single Trade")
-            if not json_output: send_telegram(format_signal(market, wt, sig, stage_used, stype))
+            signals_found.append({"market_id":cid,"market_name":market.get("question","Unknown"),"market_slug":market.get("slug",""),"parent_event":market.get("_parent_event_title",""),"market_category":category,"yes_price":yes_price,"tier":sig["tier"],"divergence":sig["divergence"],"threshold_t1":sig["threshold_t1"],"whale_prob":sig["whale_prob"],"market_prob":sig["market_prob"],"direction":wt["direction"],"outcome":wt.get("outcome","Yes"),"size_usd":wt["size_usd"],"impact_ratio":wt["impact_ratio"],"wallet":wt["wallet"],"end_date_iso":market.get("_end_date_iso",""),"days_to_resolve":days_to_res,"null_date":market.get("_null_date",False),"stage_used":stage_used,"liq_shock":shock,"prev_liq":round(prev_liq,2),"liq_drop_pct":round(drop_pct,4),"signal_type":stype,"scanned_at":datetime.now(timezone.utc).isoformat()})
+            shock_info = (prev_liq, drop_pct) if shock else None
+            if shock and stype == "Whale Accumulation" and sig["tier"] == 1:
+                print(f"  [!!!] EXTREME signal: liq shock + accumulation + Tier 1")
+            if not json_output: send_telegram(format_signal(market, wt, sig, stage_used, stype, shock_info))
+
+    # Phase 3: persist liquidity snapshots for next scan
+    liq_history.update(liq_history_upd)
+    save_liquidity_history(liq_history)
+    print(f"[+] Liq history: {len(liq_history_upd)} markets snapshotted -> {LIQUIDITY_HISTORY_FILE.split("/")[-1]}")
 
     print("\n" + "="*62)
     print(f"SCAN COMPLETE -- Stage {stage_used} -- {len(signals_found)} signal(s)")
@@ -486,7 +554,7 @@ def scan_markets(min_size=None, target_market_id=None, json_output=False, skip_r
     return signals_found
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Polymarket Whale Signal Detection v6.0")
+    parser = argparse.ArgumentParser(description="Polymarket Whale Signal Detection v6.2")
     parser.add_argument("--min-size",             type=float, default=None)
     parser.add_argument("--market-id",            type=str,   default=None)
     parser.add_argument("--json",                 action="store_true", default=False)
