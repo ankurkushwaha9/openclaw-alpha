@@ -1,6 +1,6 @@
 # CLAUDE.md - Alpha Bot Global Context
 # Location: ~/.openclaw/workspace/CLAUDE.md
-# Last Updated: 2026-03-09 (v25.0 - Day 3 COMPLETE, Smart Router proxy active on port 8081)
+# Last Updated: 2026-03-09 (v26.0 - BUG-021 documented, whale tracker upgrade plan locked)
 # DO NOT EDIT without Ankur's approval
 
 ---
@@ -278,6 +278,17 @@ KEY FIX: Wallet field is proxyWallet (NOT transactorAddress or maker)
 
 Run: cd ~/.openclaw/workspace && /home/ubuntu/.openclaw/workspace/polyclaw/.venv/bin/python3 scripts/whale_tracker.py
 Cron: 0 */2 * * * (every 2 hours -- upgrade to 30min is PENDING)
+
+KNOWN BUG (BUG-021 - HIGH PRIORITY): /events endpoint NOT scanned
+  whale_tracker.py only fetches /markets endpoint.
+  ALL major geopolitics markets (Iran, Hormuz, etc.) live in /events endpoint only.
+  Confirmed missing: Iranian regime fall $26.6M vol, Hormuz $21.8M vol, US x Iran ceasefire $14.6M vol
+  Fix: 3-phase upgrade (see WHALE TRACKER UPGRADE ROADMAP section below)
+
+Recent config changes:
+  STAGE3_TRIGGER: 3 -> 1 (commit 44f0d19, 2026-03-09)
+    Stage 2 (8-21d) now scans even if only 1 market qualifies (was: needed 3+)
+    Immediately surfaces Russia/Ukraine ceasefire ($276K liq, 21d)
 
 v5.2 Architecture (LIVE):
 - 4-STAGE EXPANSION: Tactical(1-7d $400) / Strategic(8-21d $1500) / Macro(22-45d $3500) / Extreme(46-75d $7000)
@@ -1571,3 +1582,133 @@ Problem: openclaw-integration.js tried adding unknown keys (smartRouter, routing
 Solution: Proxy architecture -- zero custom keys in openclaw.json
           Added "smart-router" as a standard provider block (valid schema)
 
+
+---
+
+## WHALE TRACKER UPGRADE ROADMAP (BUG-021 Fix -- 3-LLM Consensus 2026-03-09)
+
+### Background
+Discovered 2026-03-09 via Polymarket screenshot comparison.
+whale_tracker.py v5.2 scans /markets endpoint only.
+Polymarket's biggest geopolitics markets live in /events endpoint (nested structure).
+3-LLM brainstorm (Claude + Gemini + ChatGPT) produced unanimous architecture + two bonus upgrades.
+
+### Architecture Decision: Option B (All 3 LLMs agreed)
+Fetch both /markets AND /events in parallel.
+Merge by conditionId. /markets wins on price/liquidity conflicts.
+Zero regression -- everything currently scanned still scanned.
+
+### PHASE 1 -- Events Endpoint Fix (BUG-021 core fix)
+Status: READY TO BUILD (schema verified, all unknowns resolved)
+Files to change: scripts/whale_tracker.py only
+
+Steps:
+  1. Add fetch_events() -- GET /events paginated (all 1000), flatten markets[] array
+  2. Merge with existing fetch_markets() by conditionId
+     - /markets wins on price/liquidity if same conditionId in both
+     - Use max(events_liq, markets_liq) for liquidity field
+     - Attach parent_event_title to each sub-market for context in signals
+  3. Add guards before signal calc:
+     - Skip if negRisk=True (Gemini warning -- multi-outcome pricing behaves differently)
+     - Skip if acceptingOrders=False (ChatGPT -- phantom/untradeable market guard)
+     - Skip if outcomePrices=null
+  4. Handle endDate=null:
+     - days_to_resolution = 999
+     - Assign Stage 4 Open Horizon
+     - Raise min_liq to $25,000 and whale_min to $5,000 for null-date markets
+  5. All else unchanged: signal calc, divergence thresholds, stage config, Telegram format
+
+Schema verified fields (event sub-markets identical to /markets):
+  conditionId, endDate, endDateIso, outcomePrices, liquidity, liquidityNum,
+  negRisk, clobTokenIds, acceptingOrders, active, closed -- all present, same format
+
+### PHASE 2 -- Whale Accumulation Clustering (ChatGPT upgrade #1)
+Status: READY TO DESIGN (trade field verification complete)
+Build after Phase 1 is stable and tested.
+Expected detection improvement: 10% -> 30-50% of real whale activity
+
+Trade fields confirmed available for clustering:
+  proxyWallet -- wallet address (clustering key)
+  timestamp   -- unix epoch integer (window math ready)
+  outcome     -- Yes / No (direction consistency check)
+  size        -- USDC amount directly (NOT token units -- confirmed)
+  price       -- float 0-1
+
+Real clustering observed in live data (Russia/Ukraine market):
+  Wallet 0x3f049e: 30 trades, 48min span, $1,972 total, ALL YES -- classic accumulation
+  Wallet 0x48f979: 3 trades, 1.8min span, $932 total, all YES -- would trigger Phase 2
+
+Parameters (ChatGPT recommended):
+  CLUSTER_WINDOW = 30 minutes
+  MIN_TRADES_IN_CLUSTER = 3
+  MIN_CLUSTER_TOTAL = $900
+  Direction must be consistent (all YES or all NO)
+
+New Telegram label: "Whale Accumulation" vs "Whale Single Trade"
+
+### PHASE 3 -- Liquidity Shock Detection (ChatGPT upgrade #2)
+Status: DESIGNED (requires new persistent state file)
+Build after Phase 2 stable.
+Expected detection improvement: 30-50% -> 50-70% of real whale activity
+
+Key architectural requirement: persistent state between cron runs
+New file needed: paper_trading/liquidity_history.json
+  - Read on startup
+  - Compare current liquidity vs stored
+  - Write updated values each scan
+
+Detection rule:
+  If liquidity drops >= 20% within last scan window -> flag liquidity shock
+  Shock + cluster + divergence together = EXTREME tier signal
+
+Telegram format upgrade:
+  PRE-WHALE SETUP DETECTED
+  Liquidity Change: $198k -> $141k (-28%)
+  Follow-up Trades: 4 buys totaling $1,040
+  Signal Level: EXTREME
+
+### PHASE 4 -- Future (ChatGPT teased, not yet revealed)
+ChatGPT mentioned a "third upgrade used by serious prediction-market traders
+that detects insider trading patterns before the news breaks."
+Ask ChatGPT for Phase 4 details after Phase 3 is stable.
+
+---
+
+## PENDING WORK -- MASTER TASK LIST (Updated 2026-03-09)
+
+Priority: CRITICAL
+  [ ] BUG-021 Phase 1: Add /events endpoint to whale_tracker.py (schema verified, ready to build)
+  [ ] Oscar positions resolve March 15 -- monitor real + paper positions daily until then
+      Real: OBAA 74c entry | Chalamet 79c entry | Teyana 70c entry
+      Paper: OBAA $8 virtual | Scheffler Masters $10 virtual
+
+Priority: HIGH
+  [ ] BUG-021 Phase 2: Whale accumulation clustering (build after Phase 1 stable)
+  [ ] BUG-021 Phase 3: Liquidity shock detection (build after Phase 2 stable)
+  [ ] Smart Router DAY 3: Full activation (proxy architecture -- BUG-020 timeout issue blocks this)
+      Options: A+D (pre-warm Gemma, never route Telegram to Gemma)
+               OR native OpenClaw skill system (correct long-term approach, no timeout)
+  [ ] PR#3 merge to master (merge/pr2-smart-router -> master, currently open, not merged)
+  [ ] Whale tracker cron: upgrade from 2hr -> 30min (after BUG-021 Phase 1 stable)
+
+Priority: MEDIUM
+  [ ] Profit Alert Layer: build after Oscar resolution March 15
+      Three alert types: profit target, trailing stop, exit thesis per trade
+  [ ] MINI_CLAUDE.md context switching for Kimi (original Smart Router goal)
+  [ ] Daily monitor: add paper position P&L (currently only reports real positions)
+
+Priority: LOW
+  [ ] Instagram pipeline: first post via Composio API
+  [ ] n8n: first workflow build
+  [ ] Whale tracker: add /series endpoint scan (Layer 1 above /events -- future scope)
+  [ ] Multi-wallet accumulation detection (Phase 4+ whale tracker)
+  [ ] Wallet reputation tracking (known smart wallet weighting)
+  [ ] ChatGPT Phase 4 insider trading pattern detection (ask after Phase 3)
+
+Completed This Session (2026-03-09):
+  [x] STAGE3_TRIGGER: 3->1 (commit 44f0d19) -- Stage 2 now scans single-market stages
+  [x] BUG-021 documented in BUGS.md (commit de1db1f) -- full root cause + 3-phase fix plan
+  [x] Schema verification: event sub-market fields 100% pipeline compatible
+  [x] Trade field verification: proxyWallet, timestamp, size (USDC), outcome all confirmed
+  [x] 3-LLM synthesis: Claude + Gemini + ChatGPT -- full architecture locked
+  [x] CLAUDE.md v26.0: pending work section added
