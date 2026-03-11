@@ -796,7 +796,7 @@ Word-boundary regex alone is not sufficient.
 
 ## BUG-020 - Smart Router Proxy: Gemma Latency Causes OpenClaw Timeout
 - Date: 2026-03-09
-- Status: OPEN - Smart Router disabled, reverted to Kimi direct
+- Status: RESOLVED (2026-03-10) - prewarmGemma() added to proxy-server.js startup; Gemma loads into memory on boot, first real request <2s. Smart Router stable on dev branch.
 - Component: smart-router/proxy-server.js + Gemma 2B (Ollama)
 - Symptom: Bot stops responding to Telegram messages after Smart Router activated.
   Messages show as delivered (double tick) but bot never replies.
