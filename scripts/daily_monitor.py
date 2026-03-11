@@ -117,8 +117,23 @@ def send_telegram(msg):
 
 # ─── GAMMA API ────────────────────────────────────────────────────────────────
 
-def get_gamma_yes_price(market_id):
-    """Get current YES price directly from Gamma API."""
+def get_gamma_yes_price(market_id, side="YES"):
+    """Get current YES price. Uses CLOB API for hex conditionIds, Gamma for numeric IDs."""
+    # BUG-025 FIX: hex conditionIds (from /events endpoint) need CLOB API
+    if str(market_id).startswith('0x'):
+        try:
+            r = requests.get(f"https://clob.polymarket.com/markets/{market_id}", timeout=10)
+            r.raise_for_status()
+            tokens = r.json().get('tokens', [])
+            for t in tokens:
+                if t.get('outcome', '').strip().upper() == side.upper():
+                    return float(t['price'])
+            if tokens:
+                return float(tokens[0]['price'])
+        except Exception as e:
+            print(f"  CLOB API error for {market_id}: {e}")
+        return None
+    # Numeric IDs use Gamma API (existing logic unchanged)
     try:
         r = requests.get(f"{GAMMA_API}/markets/{market_id}", timeout=10)
         r.raise_for_status()

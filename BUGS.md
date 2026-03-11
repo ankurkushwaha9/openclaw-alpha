@@ -1137,3 +1137,39 @@ Word-boundary regex alone is not sufficient.
   ledger.json stats.total_trades: 5 -> 4
   ledger.json proposals.total: 4 -> 4 (already correct, confirmed)
   virtual_balance: $41.29 (UNCHANGED -- no financial impact)
+
+---
+
+## BUG-025 | P&L Showing "price unavailable" for Hex Market IDs
+- Status: FIXED
+- File: scripts/daily_monitor.py
+- Root Cause:
+  Markets from /events endpoint use hex conditionIds as market_id
+  (e.g. 0xffdbbf...). Gamma API /markets/{id} only accepts numeric IDs
+  and returns HTTP 422 for hex IDs -> price unavailable shown in report.
+- Affected positions:
+  Scheffler Masters, Democrats Senate, Polymarket 90%
+- Fix Applied:
+  get_gamma_yes_price() now checks if market_id starts with '0x'.
+  If hex -> uses CLOB API: clob.polymarket.com/markets/{conditionId}
+  If numeric -> uses Gamma API (existing logic unchanged).
+- Verified live prices after fix:
+  Scheffler: 19.5c | Democrats: 31.0c | Polymarket90: 7.25c
+
+---
+
+## BUG-026 | Exposure Guard Blocking All Signals (Stale Daily Cap)
+- Status: FIXED
+- File: paper_trading/paper_signal_bridge.py
+- Root Cause:
+  pending_proposals.json date was stuck at "2026-03-10" with
+  proposals_sent: 10. Reset logic only triggered inside
+  increment_daily_cap() which is only called after a successful
+  proposal send. When cap was already full, early return fired
+  before reset was ever reached. All signals blocked every scan.
+- Fix Applied (two parts):
+  Part A: Added explicit reset block at TOP of run_bridge(), before
+  any guards fire. Checks date on every run, resets daily_stats and
+  clears proposals list if new UTC day detected.
+  Part B: Manually reset pending_proposals.json to date=2026-03-11,
+  proposals_sent=0, proposals=[] to unblock immediately.
