@@ -770,3 +770,406 @@ Any keyword detection that may encounter underscore-joined identifiers (callback
 snake_case variable names, etc.) must normalize underscores to spaces before tokenizing.
 Word-boundary regex alone is not sufficient.
 
+
+## BUG-019 - OpenClaw Strict Schema Rejects Smart Router Config Keys
+- Date: 2026-03-09
+- Status: RESOLVED
+- Component: smart-router/openclaw-integration.js + openclaw.json
+- Symptom: Bot crashed on startup after install script ran. Error:
+    "Config invalid: agents.defaults.model: Unrecognized keys: routing, thresholds
+     <root>: Unrecognized key: smartRouter"
+- Root Cause: openclaw-integration.js tried to inject 3 unknown keys into openclaw.json.
+  OpenClaw has a strict Zod schema validator that rejects ANY unknown key at startup.
+- Failed Fix: openclaw doctor --fix did NOT remove the injected keys.
+  openclaw.json.backup was already overwritten with broken config.
+- Resolution: Redesigned entire Day 3 approach.
+  Instead of modifying openclaw.json config, deployed proxy-server.js as a local
+  OpenAI-compatible HTTP server on port 8081. OpenClaw uses a standard "smart-router"
+  provider block (valid schema) pointing to http://127.0.0.1:8081/v1.
+  Proxy intercepts requests, scores complexity, routes to Gemma/Kimi/Sonnet.
+  Zero unknown keys. Zero schema violations.
+- Files Changed:
+  smart-router/proxy-server.js (NEW - 341 lines)
+  openclaw.json (smart-router provider block added -- valid schema)
+  ~/.config/systemd/user/smart-router-proxy.service (NEW - auto-start service)
+- WARNING: openclaw.json.backup contains the broken smart-router config -- DO NOT USE TO RESTORE
+
+## BUG-020 - Smart Router Proxy: Gemma Latency Causes OpenClaw Timeout
+- Date: 2026-03-09
+- Status: OPEN - Smart Router disabled, reverted to Kimi direct (see fix plan below)
+- NOTE: A previous session incorrectly marked this RESOLVED. prewarmGemma() was never
+  written into proxy-server.js (confirmed: 0 occurrences). Status corrected 2026-03-11.
+  Smart router code intentionally excluded from PR4. Will be fixed in separate PR5.
+- Component: smart-router/proxy-server.js + Gemma 2B (Ollama)
+- Symptom: Bot stops responding to Telegram messages after Smart Router activated.
+  Messages show as delivered (double tick) but bot never replies.
+- Root Cause Analysis:
+  1. "Hello" (score=0) routes to Gemma 2B via Ollama on port 11434
+  2. Gemma 2B is cold/slow -- first call takes 35-40 seconds
+  3. proxy-server.js originally had 30s Gemma timeout -- whole proxy hangs
+  4. Even after reducing to 5s timeout, Gemma fails -> falls to Kimi
+  5. Kimi via NVIDIA NIM takes additional 10-15s after Gemma failure
+  6. Total latency: 15-40 seconds per message
+  7. OpenClaw appears to have its own internal timeout shorter than this
+  8. OpenClaw drops the response -> bot appears silent
+- What Was Tried:
+  * Reduced Gemma timeout from 30s to 5s (partial fix -- still total 15s)
+  * Disabled Gemma routing entirely (all -> Kimi) -- still 15s too slow
+- Current State: openclaw.json reverted to nvidia-nim/moonshotai/kimi-k2.5 direct
+  Smart Router service still running but not being used
+- Fix Options (in order of preference):
+  Option A: Pre-warm Gemma on startup -- send a dummy request to Ollama when
+            proxy-server.js starts so first real request is fast (<2s)
+  Option B: Increase OpenClaw timeout -- investigate openclaw.json timeout settings
+            (compaction.reserveTokensFloor exists, check if request timeout configurable)
+  Option C: Remove Gemma entirely from routing -- use only Kimi (free) and Sonnet (paid)
+            Simpler 2-tier routing: score<70 -> Kimi, score>=70 -> Sonnet
+  Option D: Use Gemma only for truly non-interactive tasks (cron jobs, background scans)
+            Never route real-time Telegram messages to Gemma
+- Recommended Fix: Option A (pre-warm) + Option D (no Gemma for Telegram)
+  Pre-warm on startup: add to proxy-server.js startup sequence
+  Gemma for background only: heartbeat, cron scan summaries -- never Telegram replies
+- Files to Change:
+  smart-router/proxy-server.js -- add Gemma pre-warm on startup + routing rule change
+  openclaw.json -- re-enable smart-router/smart-router as primary after fix confirmed
+
+---
+
+## BUG-021 — whale_tracker.py missing /events endpoint — Geopolitics markets invisible
+
+- Status: OPEN
+- Priority: HIGH
+- Discovered: 2026-03-09 (Session: Impact analysis + Polymarket screenshot comparison)
+- Affected File: scripts/whale_tracker.py (v5.2)
+
+- Symptom:
+  Whale tracker scans 500 markets per run but misses ALL major Iran/geopolitics markets.
+  Polymarket screenshot confirmed $26M+ volume markets (Iranian regime fall, US x Iran
+  ceasefire, Hormuz) are completely absent from scan output.
+
+- Root Cause:
+  whale_tracker.py fetches markets exclusively from:
+    GET https://gamma-api.polymarket.com/markets
+  Polymarket's largest geopolitics markets are structured as EVENTS with multiple dated
+  outcomes (e.g., "US x Iran ceasefire by March 15?", "...by March 31?", "...by June 30?")
+  and are ONLY accessible via:
+    GET https://gamma-api.polymarket.com/events
+  The /events endpoint returns nested structure: event.markets[] array.
+  These sub-markets NEVER appear in the flat /markets endpoint response.
+
+- Confirmed Missing Markets (from screenshot, all invisible to tracker):
+  * Will the Iranian regime fall by March 31? -- $26.6M vol, $938K liq, 21d
+  * Will Iran close the Strait of Hormuz by March 31? -- $21.8M vol, $581K liq, 22d
+  * US x Iran ceasefire by March 15? -- $4.7M vol, $184K liq, ~6d
+  * US x Iran ceasefire by March 31? -- $3.9M vol, $143K liq, ~22d
+  * Iranian regime fall by June 30? -- $11.9M vol, $709K liq, 112d
+  * Iranian regime fall by April 30? -- $1.5M vol, $397K liq, 51d
+
+- Schema Verification (2026-03-09):
+  Event sub-market fields are IDENTICAL to /markets fields. Pipeline-compatible:
+  conditionId, endDate, endDateIso, outcomePrices, liquidity, liquidityNum,
+  negRisk, clobTokenIds, acceptingOrders, active, closed -- all present, same format.
+
+- Trade History Verification (2026-03-09):
+  DATA_API /trades endpoint confirmed working for sub-markets.
+  Fields available for Phase 2 accumulation clustering:
+    proxyWallet -- wallet address (clustering key)
+    timestamp   -- unix epoch integer (window math ready)
+    outcome     -- "Yes" / "No" (direction consistency check)
+    side        -- "BUY" / "SELL"
+    size        -- USDC amount directly (NOT token units -- confirmed)
+    price       -- float 0-1
+    conditionId -- market identifier
+  Wallet clustering observed in real data:
+    0x3f049e... -- 30 trades, 48min span, $1,972 total, all YES (classic accumulation)
+    0x48f979... -- 3 trades, 1.8min span, $932 total, all YES
+
+- 3-LLM Brainstorm (Claude + Gemini + ChatGPT) Consensus:
+  Architecture: Option B -- parallel fetch both endpoints, merge by conditionId
+  Priority rules:
+    /markets wins on price/liquidity if conditionId in both (closer to CLOB truth)
+    Use max(events_liq, markets_liq) for liquidity field
+  Guards to add:
+    negRisk=True      -> skip (Gemini)
+    acceptingOrders=False -> skip / phantom market (ChatGPT)
+    endDate=null      -> days=999, Stage 4 Open Horizon, raise min_liq to 25k (ChatGPT)
+  Two additional upgrades identified (separate phases):
+    Phase 2: Whale accumulation clustering (30min window, 3+ trades, $900 min)
+    Phase 3: Liquidity shock detection (persistent state between cron runs)
+
+- Fix Plan (3 phases):
+  PHASE 1 (events fix -- build next session):
+    1. Add fetch_events() function: GET /events paginated, flatten markets[]
+    2. Merge with existing fetch_markets() by conditionId
+    3. Add negRisk + acceptingOrders + endDate=null guards
+    4. Attach parent_event_title to each sub-market for context
+    5. All else unchanged (signal calc, thresholds, Telegram format)
+
+  PHASE 2 (accumulation clustering -- after Phase 1 stable):
+    1. Group trades by (proxyWallet, conditionId, outcome) within 30min window
+    2. Signal if total >= $900 AND trades >= 3 AND direction consistent
+    3. New Telegram label: "Whale Accumulation" vs "Whale Single Trade"
+
+  PHASE 3 (liquidity shock -- after Phase 2 stable):
+    1. New file: paper_trading/liquidity_history.json (persists between cron runs)
+    2. Read on startup, compare current vs stored, write updated each scan
+    3. Shock = -20%+ liquidity within last scan window
+    4. Combined signal: shock + cluster + divergence = EXTREME tier
+
+- Related:
+  STAGE3_TRIGGER fix (2026-03-09, commit 44f0d19) -- lowers stage escalation threshold
+  but does NOT fix the root cause (still only scanning /markets endpoint)
+
+- Resolution (All 4 Phases COMPLETE -- 2026-03-10):
+
+  PHASE 1 ✅ DONE (commit 737b3c0 -> 3c4217c, v6.0):
+    * fetch_events(): GET /events paginated (1000 events -> 13,533 sub-markets flattened)
+    * merge_market_sources(): /markets canonical, /events adds new markets by conditionId
+    * max(events_liq, markets_liq) for liquidity accuracy
+    * 3 guards: negRisk=True skip, acceptingOrders=False skip, outcomePrices=null skip
+    * endDate=null -> days=999, min_liq=$25k, whale_min=$5k (Open Horizon tier)
+    * _parent_event_title enrichment for context in signals
+    * Live test confirmed: 13,033 new markets from /events visible
+    * Iran geopolitics markets detected in first scan ✅
+    * Hotfix 3c4217c: CATEGORY_PRIORITY/get typo -> .get (slash vs dot)
+
+  PHASE 2 ✅ DONE (commit 48e5e9e, v6.1):
+    * find_whale_clusters(): groups trades by proxyWallet within 30min window
+    * Fires when: >= 3 trades, >= $900 USDC total, direction consistent (all YES or all NO)
+    * Manipulation guard carried over from single-trade detection
+    * One cluster per wallet per market (break after first qualifying window)
+    * Label: "Whale Accumulation" vs "Whale Single Trade"
+    * Live test: Hamas disarm -- 7tx/18min/$1,220/all-No -> TIER 1 ACCUM ✅
+
+  PHASE 3 ✅ DONE (commit a6f60b8, v6.2):
+    * load/save_liquidity_history(): atomic write to paper_trading/liquidity_history.json
+    * check_liquidity_shock(): -20%+ drop = shock flag, (False, 0, 0) on first run
+    * Shock persisted between cron runs -- 54 snapshots confirmed in file
+    * EXTREME tier: shock + cluster + Tier 1 divergence together
+    * Telegram format: "PRE-WHALE SETUP DETECTED" with liq change line
+    * Live test: -25.9% faked shocks on Russia/Ukraine detected correctly ✅
+
+  PHASE 4 ✅ DONE (commit a5b63ad, v6.3):
+    * Informed wallet detection -- tracks wallet accuracy across market resolutions
+    * load/save_wallet_stats(): paper_trading/wallet_stats.json (persists)
+    * load/save_pending_evals(): paper_trading/pending_wallet_evals.json
+    * process_pending_evals(): scores wallets after market resolution
+    * Wallet tiers: unknown -> known -> smart (>=65% acc) -> elite (>=80% acc) -> market_maker
+    * boost_signal_tier(): elite upgrades dead signal to T1, smart upgrades T2->T1/T1->EXTREME
+    * market_maker tier: SUPPRESSES signal (noise filter)
+    * Telegram labels: "ELITE WALLET DETECTED" / "SMART WALLET DETECTED"
+    * boosted_tier added to whale_signals.json output
+    * Live test: wallet_stats.json populated, pending_evals.json tracking ✅
+
+  Final result: whale_tracker.py v6.3
+    Detection coverage: ~10% (v5.2) -> ~50-70% estimated (v6.3)
+    Markets visible: 500 (/markets only) -> 13,533+ (merged /markets + /events)
+    Signal quality: single threshold -> 4-layer scoring (divergence + cluster + shock + wallet)
+
+
+---
+
+## BUG-022 🐛 Paper Proposal Buttons Expire Overnight
+
+- Status: FIXED ✅
+- Priority: MEDIUM
+- Discovered: 2026-03-10
+- Affected File: paper_trading/paper_propose.py
+
+- Symptom:
+  Whale signals fire every 2 hours around the clock.
+  Most proposals fire between midnight and 6am MST while Ankur sleeps.
+  By morning, all overnight proposals show expired -- buttons already removed.
+  TIMEOUT_MIN = 30 means buttons disappear 30min after send.
+
+- Root Cause:
+  Timing mismatch: proposals fire on cron schedule (UTC), Ankur reviews at wake (MST = UTC-7).
+  A 30-minute window is too short for overnight proposals.
+  Markets resolve in 8-21 days -- a few hours of price drift is acceptable.
+
+- Fix Applied (commit pending):
+  paper_propose.py line 55:
+    Before: TIMEOUT_MIN = 30
+    After:  TIMEOUT_MIN = 240  (4 hours)
+  TIMEOUT_SEC = TIMEOUT_MIN * 60 auto-updates all downstream uses.
+  Safe: timestamp-based callback_data per proposal prevents multi-proposal interference.
+
+---
+
+## BUG-023 🐛 n8n Forwards Callback Tokens to Kimi -- Context Confusion
+
+- Status: OPEN (partial workaround documented)
+- Priority: MEDIUM
+- Discovered: 2026-03-10
+- Affected Files: paper_trading/paper_propose.py, n8n Telegram workflow
+
+- Symptom:
+  When Ankur taps YES/NO on a proposal, n8n ALSO receives the callback_query update.
+  n8n forwards bare token (PAPER_YES_1773151218, PAPER_NO_1773158420) to Kimi.
+  Kimi has no context about which proposal is active -- guesses from session history.
+  Result: Kimi references the wrong trade (most recent one it knows about).
+
+- Root Cause (two stacked problems):
+  1. n8n Telegram trigger receives ALL update types by default (including callback_query)
+     Code comment "callback_query updates are a separate type they never touch" is WRONG.
+  2. Kimi shares one persistent session for the full day (137+ messages)
+     Guesses context from history when it receives a bare callback token.
+
+- Fix Options:
+  Option A (RECOMMENDED -- architecturally correct):
+    Add n8n filter: if message matches PAPER_YES_* or PAPER_NO_* pattern -> DROP, do not forward to Kimi.
+    Kimi has no business seeing raw callback tokens. paper_propose.py handles execution independently.
+    Requires: edit n8n Telegram workflow in n8n UI (cannot be done via EC2 code).
+
+  Option B (workaround):
+    paper_propose.py sends context message to Kimi before opening buttons.
+    "PROPOSAL ACTIVE: [market_name] -- waiting for YES/NO"
+    Kimi then has correct context when callback arrives.
+    Downside: root problem (n8n receiving callbacks) remains. Adds n8n dependency.
+
+- Recommended Action:
+  1. Apply Option A in n8n UI: add IF node before Kimi -- filter out PAPER_YES_* / PAPER_NO_*
+  2. Optionally add Option B as belt-and-suspenders for Kimi situational awareness
+  3. Long term: configure n8n Telegram trigger to receive 'message' updates ONLY (not callback_query)
+
+---
+
+## BUG-022 - Paper Proposal Buttons Expire Overnight
+
+- Status: FIXED
+- Priority: MEDIUM
+- Discovered: 2026-03-10
+- Affected File: paper_trading/paper_propose.py
+
+- Symptom:
+  Whale signals fire every 2 hours around the clock.
+  Most proposals fire between midnight and 6am MST while Ankur sleeps.
+  By morning, all overnight proposals show expired -- buttons already removed.
+  TIMEOUT_MIN = 30 means buttons disappear 30min after send.
+
+- Root Cause:
+  Timing mismatch: proposals fire on UTC cron schedule, Ankur reviews at wake (MST = UTC-7).
+  30-minute window too short for overnight proposals.
+  Markets resolve in 8-21 days -- a few hours of price drift is acceptable.
+
+- Fix Applied:
+  paper_trading/paper_propose.py line 55:
+    Before: TIMEOUT_MIN = 30
+    After:  TIMEOUT_MIN = 240  (4 hours)
+  TIMEOUT_SEC = TIMEOUT_MIN * 60 auto-updates all downstream references.
+  Safe: timestamp-based callback_data per proposal prevents multi-proposal interference.
+
+---
+
+## BUG-023 - n8n Forwards Callback Tokens to Kimi -- Context Confusion
+
+- Status: OPEN (fix documented, requires n8n UI action)
+- Priority: MEDIUM
+- Discovered: 2026-03-10
+- Affected Files: paper_trading/paper_propose.py, n8n Telegram workflow
+
+- Symptom:
+  When Ankur taps YES/NO on a proposal, n8n ALSO receives the callback_query update.
+  n8n forwards bare token (PAPER_YES_1773151218, PAPER_NO_1773158420) to Kimi.
+  Kimi has no context about which proposal is active -- guesses from session history.
+  Result: Kimi references the wrong trade (most recent one it knows about).
+
+- Example timeline:
+  14:00 UTC -- Democrats Senate proposal sent
+  14:10 UTC -- Ankur taps YES -> paper_propose.py executes correctly
+               n8n ALSO receives YES callback -> Kimi logs "Democrats YES"
+  16:00 UTC -- Kostyantynivka proposal sent
+  16:00 UTC -- Ankur taps NO -> paper_propose.py skips correctly
+               n8n ALSO receives NO callback -> forwards bare PAPER_NO_1773158420 to Kimi
+               Kimi sees NO, most recent trade it knows = Democrats
+               Kimi says "I already executed Democrats on your previous callback" -- WRONG
+
+- Root Cause (two stacked problems):
+  1. n8n Telegram trigger receives ALL update types by default (including callback_query)
+     Code comment saying "n8n never sees callback_query" is INCORRECT in practice.
+  2. Kimi shares one persistent session all day (137+ messages) -- guesses from history
+
+- Fix:
+  Option A -- RECOMMENDED (architecturally correct):
+    In n8n UI: add IF node before Kimi forward step.
+    Condition: message text does NOT match pattern ^PAPER_(YES|NO)_\d+$
+    If pattern matches -> DROP (do not forward to Kimi)
+    Kimi has no business seeing raw callback tokens.
+    Also: configure n8n Telegram trigger to receive 'message' updates ONLY (not callback_query)
+
+  Option B -- Belt and suspenders (add AFTER Option A):
+    paper_propose.py sends context line before opening buttons:
+    "PROPOSAL ACTIVE: [market_name] -- awaiting YES/NO"
+    Kimi then has correct active trade context if callback somehow still arrives.
+
+- Action Required:
+  Ankur must apply Option A manually in n8n UI (cannot be done via EC2 code).
+  URL: http://[EC2_IP]:5678 -> Telegram workflow -> add IF filter node
+
+---
+
+## BUG-024 - Ghost Trade Counter in Ledger Stats
+
+- Status: FIXED
+- Priority: LOW (cosmetic, no financial impact)
+- Discovered: 2026-03-10
+- Fixed: 2026-03-10
+- Affected File: paper_trading/ledger.json
+
+- Symptom:
+  stats.total_trades = 5
+  But open_positions = 4, resolved_positions = 0
+  Math: 4 + 0 = 4, not 5. One ghost trade in the counter.
+
+- Root Cause:
+  Rojas Texas Abortion Case trade was manually removed from open_positions
+  at some point (likely during a ledger reset or manual cleanup).
+  The stats.total_trades counter was never decremented.
+  Balance and positions were both correct -- only the stats counter was wrong.
+
+- Why It Matters:
+  win_rate = wins / total_trades
+  Ghost trade inflates denominator: 1/5 = 20% instead of correct 1/4 = 25%
+  This directly affects the Go-Live Scorecard accuracy.
+  Oscar positions resolve March 15 -- fixed before resolution week.
+
+- Fix Applied:
+  ledger.json stats.total_trades: 5 -> 4
+  ledger.json proposals.total: 4 -> 4 (already correct, confirmed)
+  virtual_balance: $41.29 (UNCHANGED -- no financial impact)
+
+---
+
+## BUG-025 | P&L Showing "price unavailable" for Hex Market IDs
+- Status: FIXED
+- File: scripts/daily_monitor.py
+- Root Cause:
+  Markets from /events endpoint use hex conditionIds as market_id
+  (e.g. 0xffdbbf...). Gamma API /markets/{id} only accepts numeric IDs
+  and returns HTTP 422 for hex IDs -> price unavailable shown in report.
+- Affected positions:
+  Scheffler Masters, Democrats Senate, Polymarket 90%
+- Fix Applied:
+  get_gamma_yes_price() now checks if market_id starts with '0x'.
+  If hex -> uses CLOB API: clob.polymarket.com/markets/{conditionId}
+  If numeric -> uses Gamma API (existing logic unchanged).
+- Verified live prices after fix:
+  Scheffler: 19.5c | Democrats: 31.0c | Polymarket90: 7.25c
+
+---
+
+## BUG-026 | Exposure Guard Blocking All Signals (Stale Daily Cap)
+- Status: FIXED
+- File: paper_trading/paper_signal_bridge.py
+- Root Cause:
+  pending_proposals.json date was stuck at "2026-03-10" with
+  proposals_sent: 10. Reset logic only triggered inside
+  increment_daily_cap() which is only called after a successful
+  proposal send. When cap was already full, early return fired
+  before reset was ever reached. All signals blocked every scan.
+- Fix Applied (two parts):
+  Part A: Added explicit reset block at TOP of run_bridge(), before
+  any guards fire. Checks date on every run, resets daily_stats and
+  clears proposals list if new UTC day detected.
+  Part B: Manually reset pending_proposals.json to date=2026-03-11,
+  proposals_sent=0, proposals=[] to unblock immediately.

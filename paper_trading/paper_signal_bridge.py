@@ -399,6 +399,16 @@ def run_bridge(dry_run=False):
     ledger  = load_ledger()
     pending = load_pending()
 
+    # BUG-026 FIX: Reset daily cap + proposals list at start of each new UTC day
+    # Previously reset only happened inside check_daily_cap (read-only) or
+    # increment_daily_cap (only called after a proposal sent -- never reached if cap full)
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    if pending.get('daily_stats', {}).get('date') != today:
+        log(f"New UTC day detected -- resetting daily cap and proposal history", "CAP")
+        pending['daily_stats'] = {'date': today, 'proposals_sent': 0}
+        pending['proposals'] = []
+        save_pending(pending)
+
     # Check daily cap BEFORE processing any signals
     can_send, sent_today = check_daily_cap(pending)
     log(f"Daily cap: {sent_today}/{MAX_PROPOSALS_DAY} proposals sent today (UTC)")
