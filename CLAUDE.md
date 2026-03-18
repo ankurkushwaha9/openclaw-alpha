@@ -1714,3 +1714,25 @@ Completed This Session (2026-03-09):
   [x] Trade field verification: proxyWallet, timestamp, size (USDC), outcome all confirmed
   [x] 3-LLM synthesis: Claude + Gemini + ChatGPT -- full architecture locked
   [x] CLAUDE.md v26.0: pending work section added
+
+---
+
+## REAL MONEY TRADING -- READ BEFORE ASKING ANKUR ANYTHING
+
+Full reference file: docs/REAL_MONEY_TRADES.md (on master branch, GitHub)
+Read that file first. Never ask Ankur to re-explain wallet or trade process.
+
+CRITICAL FACTS (memorize these):
+1. Ankur is in USA -- Polymarket UI is BLOCKED for US users
+2. All real trades placed via MetaMask directly to smart contracts on Polygon
+3. Polymarket profile Alpha0609 always shows $0 -- this is EXPECTED, not a bug
+4. Trading wallet: 0x6695ebAC8bb8d7636d6744643DeDE27eD67bccB3 (Polygon, USDC)
+5. Bot monitors positions via Gamma API -- it does NOT execute real trades
+6. To verify balance: use Polygon RPC directly (see REAL_MONEY_TRADES.md)
+7. To add new trade to monitoring: edit REAL_MONEY_POSITIONS in daily_monitor.py
+
+OSCAR 2026 TRADES (completed, March 15, 2026):
+  OBAA Best Picture:     $10 @ 74.5c -- WON (+$3.42) -- payout pending on-chain
+  Chalamet Best Actor:   $8  @ 79.0c -- LOST (-$8.00)
+  Teyana Best Supporting: $7 @ 70.0c -- LOST (-$7.00)
+  NET: -$11.58 | Wallet balance: $66.00 USDC (payout not settled yet as of March 18)
