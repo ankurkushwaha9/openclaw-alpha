@@ -1,7 +1,7 @@
-# Ankur's AI Alpha
-### Personal AI Operating System — Production Deployment
+# OpenClaw Alpha
+### Agentic AI Operating System — Production on AWS EC2
 
-> Built by **Ankur Kush**  
+> Built by **Ankur Kushwaha** (@ankurkushwaha9)  
 > Engineering Partner: **Claude (Anthropic)**  
 > Status: **LIVE** | Version: 1.0 | Updated: Feb 24, 2026
 
@@ -9,12 +9,12 @@
 
 ## What Is This?
 
-Ankur's AI Alpha is a fully autonomous personal AI agent that lives on AWS EC2
-and talks to you via Telegram. It combines prediction market intelligence,
-paper trading simulation, whale signal tracking, and a conversational AI brain
-into one unified system.
+OpenClaw Alpha is a fully autonomous agentic AI system running live on AWS EC2
+and accessible via Telegram. It combines prediction market intelligence,
+paper trading simulation, whale signal tracking, and a multi-LLM conversational
+brain into one unified operating system.
 
-This is not a chatbot. This is an AI Operating System.
+This is not a chatbot. This is an Agentic AI Operating System.
 
 ---
 
@@ -54,6 +54,7 @@ Integrations Bridge
   - HeyGen       (Video generation)
   - Groq Whisper (Voice transcription)
   - ElevenLabs   (Text to speech via Composio)
+  - n8n          (Workflow automation, port 5678)
 ```
 
 ---
@@ -217,7 +218,7 @@ It contains the current state of all systems, positions, and context.
 
 ## Created By
 
-**Ankur Kush** — Vision, product direction, and all key decisions  
+**Ankur Kushwaha** — Vision, product direction, and all key decisions  
 **Claude (Anthropic)** — Engineering partner, architecture, and implementation  
 
 *"We are building an empire, one mission at a time."*
@@ -226,5 +227,5 @@ It contains the current state of all systems, positions, and context.
 
 ## License
 
-Private repository. All rights reserved.
+Private repository. All rights reserved.  
 Contact: kush.ankur0609@gmail.com
